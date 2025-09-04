@@ -1,0 +1,371 @@
+name: Comprehensive Test Suite
+
+on:
+  schedule:
+    # 毎日深夜2時に実行（UTC）
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      test_level:
+        description: 'Test level to run'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+        - unit
+        - integration
+        - e2e
+        - performance
+        - full
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # テスト環境マトリックス
+  test-matrix:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ['3.11', '3.12']
+        include:
+          - os: ubuntu-latest
+            python-version: '3.11'
+            run_performance: true
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v22
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Setup test environment
+        run: |
+          nix develop --command bash -c "
+            uv sync --dev
+            source .venv/bin/activate
+            pip install pytest-html pytest-json-report pytest-benchmark
+          "
+
+      - name: Run unit tests
+        if: inputs.test_level == 'unit' || inputs.test_level == 'full' || !inputs.test_level
+        run: |
+          nix develop --command bash -c "
+            source .venv/bin/activate
+            pytest tests/unit/ \
+              --json-report --json-report-file=reports/unit-test-report.json \
+              --html=reports/unit-test-report.html --self-contained-html \
+              -v --tb=short \
+              --cov=app --cov-report=xml:reports/unit-coverage.xml \
+              --cov-report=html:reports/unit-coverage-html
+          "
+
+      - name: Run integration tests
+        if: inputs.test_level == 'integration' || inputs.test_level == 'full' || !inputs.test_level
+        run: |
+          nix develop --command bash -c "
+            source .venv/bin/activate
+            pytest tests/integration/ \
+              --json-report --json-report-file=reports/integration-test-report.json \
+              --html=reports/integration-test-report.html --self-contained-html \
+              -v --tb=short
+          "
+
+      - name: Run E2E tests
+        if: inputs.test_level == 'e2e' || inputs.test_level == 'full' || !inputs.test_level
+        run: |
+          nix develop --command bash -c "
+            source .venv/bin/activate
+            pytest tests/e2e/ \
+              --json-report --json-report-file=reports/e2e-test-report.json \
+              --html=reports/e2e-test-report.html --self-contained-html \
+              -v --tb=short \
+              --maxfail=5
+          "
+
+      - name: Run performance tests
+        if: (inputs.test_level == 'performance' || inputs.test_level == 'full' || !inputs.test_level) && matrix.run_performance
+        run: |
+          nix develop --command bash -c "
+            source .venv/bin/activate
+            pytest tests/e2e/test_full_workflow.py::TestPerformanceAndScalability \
+              --benchmark-json=reports/benchmark-report.json \
+              --html=reports/performance-test-report.html --self-contained-html \
+              -v --tb=short
+          "
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-reports-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: reports/
+          retention-days: 30
+
+  # セキュリティテスト
+  security-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v22
+
+      - name: Setup security tools
+        run: |
+          nix develop --command bash -c "
+            uv sync --dev
+            source .venv/bin/activate
+            pip install safety bandit semgrep
+          "
+
+      - name: Run safety check (dependency vulnerabilities)
+        run: |
+          nix develop --command bash -c "
+            source .venv/bin/activate
+            safety check --json --output reports/safety-report.json || true
+          "
+
+      - name: Run bandit security scan
+        run: |
+          nix develop --command bash -c "
+            source .venv/bin/activate
+            bandit -r app/ -f json -o reports/bandit-report.json || true
+          "
+
+      - name: Run semgrep security scan
+        run: |
+          nix develop --command bash -c "
+            semgrep --config=auto app/ --json --output=reports/semgrep-report.json || true
+          "
+
+      - name: Upload security reports
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-reports
+          path: reports/
+          retention-days: 30
+
+  # コードカバレッジ分析
+  coverage-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v22
+
+      - name: Setup environment
+        run: |
+          nix develop --command bash -c "
+            uv sync --dev
+            source .venv/bin/activate
+            pip install coverage[toml] pytest-cov
+          "
+
+      - name: Run comprehensive coverage analysis
+        run: |
+          nix develop --command bash -c "
+            source .venv/bin/activate
+            
+            # 全テストで統合カバレッジ取得
+            coverage run -m pytest tests/ --tb=short
+            
+            # カバレッジレポート生成
+            coverage xml -o reports/coverage.xml
+            coverage html -d reports/coverage-html
+            coverage json -o reports/coverage.json
+            
+            # カバレッジ詳細レポート
+            coverage report --show-missing > reports/coverage-detailed.txt
+            
+            # カバレッジが80%未満の場合は警告
+            coverage report --fail-under=80 || echo 'Coverage below 80%'
+          "
+
+      - name: Generate coverage badge
+        run: |
+          nix develop --command bash -c "
+            source .venv/bin/activate
+            pip install coverage-badge
+            coverage-badge -o reports/coverage-badge.svg
+          "
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-reports
+          path: reports/
+          retention-days: 30
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: reports/coverage.xml
+          flags: comprehensive
+
+  # パフォーマンステスト（詳細）
+  performance-tests:
+    runs-on: ubuntu-latest
+    if: inputs.test_level == 'performance' || inputs.test_level == 'full' || !inputs.test_level
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v22
+
+      - name: Setup performance testing environment
+        run: |
+          nix develop --command bash -c "
+            uv sync --dev
+            source .venv/bin/activate
+            pip install pytest-benchmark pytest-asyncio locust
+          "
+
+      - name: Run API performance tests
+        run: |
+          nix develop --command bash -c "
+            source .venv/bin/activate
+            pytest tests/e2e/test_full_workflow.py::TestPerformanceAndScalability \
+              --benchmark-only \
+              --benchmark-json=reports/api-benchmark.json \
+              -v
+          "
+
+      - name: Run memory usage tests
+        run: |
+          nix develop --command bash -c "
+            source .venv/bin/activate
+            pytest tests/e2e/test_full_workflow.py::TestPerformanceAndScalability::test_memory_usage_stability \
+              --tb=short -v
+          "
+
+      - name: Run load testing preparation
+        run: |
+          cat > locustfile.py << 'EOF'
+          from locust import HttpUser, task, between
+          import tempfile
+          import os
+          
+          class M4ATranscribeUser(HttpUser):
+              wait_time = between(1, 5)
+              
+              def on_start(self):
+                  # テスト用音声ファイルデータ
+                  self.test_audio = b'\\x00\\x00\\x00\\x20ftypM4A ' + b'\\x00' * 1024
+              
+              @task(3)
+              def check_status(self):
+                  self.client.get("/api/v1/status")
+              
+              @task(2)
+              def check_health(self):
+                  self.client.get("/health")
+              
+              @task(1)
+              def upload_audio(self):
+                  with tempfile.NamedTemporaryFile(suffix='.m4a') as f:
+                      f.write(self.test_audio)
+                      f.flush()
+                      
+                      files = {"audio_file": ("test.m4a", self.test_audio, "audio/m4a")}
+                      data = {"usage_type": "meeting"}
+                      
+                      self.client.post("/api/v1/transcriptions", files=files, data=data)
+          EOF
+
+      - name: Upload performance reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: performance-reports
+          path: reports/
+          retention-days: 30
+
+  # テスト結果の統合・通知
+  test-summary:
+    runs-on: ubuntu-latest
+    needs: [test-matrix, security-tests, coverage-analysis, performance-tests]
+    if: always()
+    steps:
+      - name: Download all test artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: all-reports/
+
+      - name: Generate comprehensive test summary
+        run: |
+          mkdir -p summary
+          
+          echo "# M4A転写システム テスト実行サマリー" > summary/test-summary.md
+          echo "" >> summary/test-summary.md
+          echo "実行日時: $(date)" >> summary/test-summary.md
+          echo "リポジトリ: ${{ github.repository }}" >> summary/test-summary.md
+          echo "コミット: ${{ github.sha }}" >> summary/test-summary.md
+          echo "" >> summary/test-summary.md
+          
+          echo "## テスト結果" >> summary/test-summary.md
+          
+          # ジョブ実行結果確認
+          if [[ "${{ needs.test-matrix.result }}" == "success" ]]; then
+            echo "✅ マトリックステスト: 成功" >> summary/test-summary.md
+          else
+            echo "❌ マトリックステスト: 失敗" >> summary/test-summary.md
+          fi
+          
+          if [[ "${{ needs.security-tests.result }}" == "success" ]]; then
+            echo "✅ セキュリティテスト: 成功" >> summary/test-summary.md
+          else
+            echo "❌ セキュリティテスト: 失敗" >> summary/test-summary.md
+          fi
+          
+          if [[ "${{ needs.coverage-analysis.result }}" == "success" ]]; then
+            echo "✅ カバレッジ分析: 成功" >> summary/test-summary.md
+          else
+            echo "❌ カバレッジ分析: 失敗" >> summary/test-summary.md
+          fi
+          
+          if [[ "${{ needs.performance-tests.result }}" == "success" ]]; then
+            echo "✅ パフォーマンステスト: 成功" >> summary/test-summary.md
+          else
+            echo "❌ パフォーマンステスト: スキップまたは失敗" >> summary/test-summary.md
+          fi
+          
+          echo "" >> summary/test-summary.md
+          echo "## アーティファクト" >> summary/test-summary.md
+          echo "- テストレポート: 各OSとPythonバージョンごとに生成" >> summary/test-summary.md
+          echo "- セキュリティレポート: Safety、Bandit、Semgrepの結果" >> summary/test-summary.md
+          echo "- カバレッジレポート: 統合カバレッジ分析結果" >> summary/test-summary.md
+          echo "- パフォーマンスレポート: ベンチマーク結果" >> summary/test-summary.md
+          
+          cat summary/test-summary.md
+
+      - name: Upload test summary
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-summary
+          path: summary/
+          retention-days: 90
+
+      - name: Comment test results on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = fs.readFileSync('summary/test-summary.md', 'utf8');
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });

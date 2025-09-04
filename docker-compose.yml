@@ -1,0 +1,128 @@
+version: '3.8'
+
+services:
+  # メインアプリケーション
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: m4a-transcribe-app
+    ports:
+      - "8100:8100"
+    volumes:
+      - .:/app
+      - /app/.venv  # 仮想環境はコンテナ内で管理
+      - uploads:/app/uploads
+      - models:/app/models
+    environment:
+      - ENV=development
+      - DATABASE_URL=sqlite:///./data/m4a_transcribe.db
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=DEBUG
+    depends_on:
+      - ollama
+      - redis
+    restart: unless-stopped
+    networks:
+      - m4a-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Ollama AIサーバー
+  ollama:
+    image: ollama/ollama:latest
+    container_name: m4a-transcribe-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_ORIGINS=http://localhost:8100,http://app:8100
+      - OLLAMA_HOST=0.0.0.0:11434
+    restart: unless-stopped
+    networks:
+      - m4a-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 6G  # Google Cloud E2制約を考慮
+
+  # Redis (キャッシュ・セッション管理)
+  redis:
+    image: redis:7-alpine
+    container_name: m4a-transcribe-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    restart: unless-stopped
+    networks:
+      - m4a-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Nginx (リバースプロキシ・静的ファイル配信)
+  nginx:
+    image: nginx:alpine
+    container_name: m4a-transcribe-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./static:/var/www/static:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - app
+    restart: unless-stopped
+    networks:
+      - m4a-network
+
+  # モデル初期化コンテナ (Ollamaモデルダウンロード用)
+  model-init:
+    image: curlimages/curl:latest
+    container_name: m4a-transcribe-model-init
+    depends_on:
+      ollama:
+        condition: service_healthy
+    volumes:
+      - ./scripts/init-models.sh:/init-models.sh:ro
+    command: ["/bin/sh", "/init-models.sh"]
+    networks:
+      - m4a-network
+    restart: "no"
+
+volumes:
+  uploads:
+    driver: local
+  models:
+    driver: local
+  ollama_data:
+    driver: local
+  redis_data:
+    driver: local
+  nginx_logs:
+    driver: local
+
+networks:
+  m4a-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

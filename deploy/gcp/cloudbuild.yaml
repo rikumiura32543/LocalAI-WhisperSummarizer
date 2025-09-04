@@ -1,0 +1,132 @@
+# Google Cloud Build設定ファイル
+# M4A転写システム - Google Cloud E2デプロイメント
+
+steps:
+  # 1. ソースコード準備
+  - name: 'gcr.io/cloud-builders/git'
+    args: ['submodule', 'update', '--init', '--recursive']
+    id: 'prepare-source'
+
+  # 2. Docker イメージビルド（本番用）
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--target=production'
+      - '--tag=gcr.io/$PROJECT_ID/m4a-transcribe:$COMMIT_SHA'
+      - '--tag=gcr.io/$PROJECT_ID/m4a-transcribe:latest'
+      - '--cache-from=gcr.io/$PROJECT_ID/m4a-transcribe:latest'
+      - '--build-arg=BUILDKIT_INLINE_CACHE=1'
+      - '.'
+    id: 'build-production-image'
+    waitFor: ['prepare-source']
+
+  # 3. セキュリティスキャン
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'container'
+      - 'images'
+      - 'scan'
+      - 'gcr.io/$PROJECT_ID/m4a-transcribe:$COMMIT_SHA'
+      - '--location=asia'
+    id: 'security-scan'
+    waitFor: ['build-production-image']
+
+  # 4. イメージのプッシュ
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/m4a-transcribe:$COMMIT_SHA'
+    id: 'push-image'
+    waitFor: ['security-scan']
+
+  # 5. 最新タグのプッシュ
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/m4a-transcribe:latest'
+    id: 'push-latest'
+    waitFor: ['push-image']
+
+  # 6. Compute Engine インスタンステンプレート更新
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'compute'
+      - 'instance-templates'
+      - 'create-with-container'
+      - 'm4a-transcribe-template-$BUILD_ID'
+      - '--machine-type=e2-standard-2'
+      - '--network-interface=network-tier=PREMIUM,subnet=default'
+      - '--maintenance-policy=MIGRATE'
+      - '--provisioning-model=STANDARD'
+      - '--scopes=https://www.googleapis.com/auth/devstorage.read_only,https://www.googleapis.com/auth/logging.write,https://www.googleapis.com/auth/monitoring.write,https://www.googleapis.com/auth/servicecontrol,https://www.googleapis.com/auth/service.management.readonly,https://www.googleapis.com/auth/trace.append'
+      - '--tags=http-server,https-server,m4a-transcribe'
+      - '--container-image=gcr.io/$PROJECT_ID/m4a-transcribe:$COMMIT_SHA'
+      - '--container-restart-policy=always'
+      - '--container-mount-host-path=mount-path=/app/data,host-path=/opt/m4a-transcribe/data,mode=rw'
+      - '--container-mount-host-path=mount-path=/app/logs,host-path=/opt/m4a-transcribe/logs,mode=rw'
+      - '--container-env-file=deploy/gcp/env.list'
+      - '--boot-disk-size=50GB'
+      - '--boot-disk-type=pd-standard'
+      - '--boot-disk-device-name=m4a-transcribe-boot'
+      - '--labels=environment=production,application=m4a-transcribe'
+    id: 'create-instance-template'
+    waitFor: ['push-latest']
+
+  # 7. マネージドインスタンスグループ更新（ローリングアップデート）
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'compute'
+      - 'instance-groups'
+      - 'managed'
+      - 'rolling-action'
+      - 'start-update'
+      - 'm4a-transcribe-mig'
+      - '--version=template=m4a-transcribe-template-$BUILD_ID'
+      - '--zone=asia-northeast1-a'
+      - '--max-surge=1'
+      - '--max-unavailable=0'
+      - '--replacement-method=substitute'
+    id: 'rolling-update'
+    waitFor: ['create-instance-template']
+
+  # 8. デプロイ完了確認
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'compute'
+      - 'instance-groups'
+      - 'managed'
+      - 'wait-until-stable'
+      - 'm4a-transcribe-mig'
+      - '--zone=asia-northeast1-a'
+      - '--timeout=600s'
+    id: 'wait-for-deployment'
+    waitFor: ['rolling-update']
+
+  # 9. ヘルスチェック確認
+  - name: 'gcr.io/cloud-builders/curl'
+    args:
+      - '-f'
+      - 'http://$_LOAD_BALANCER_IP/health'
+    id: 'health-check'
+    waitFor: ['wait-for-deployment']
+
+# ビルドオプション
+options:
+  # Cloud Build 実行環境設定
+  machineType: 'E2_HIGHCPU_8'  # 8 vCPU, 8GB RAM
+  diskSizeGb: 100
+  logging: CLOUD_LOGGING_ONLY
+
+# 代替変数（substitutions）
+substitutions:
+  _LOAD_BALANCER_IP: 'AUTO'  # ロードバランサーのIPアドレス
+  _ENVIRONMENT: 'production'
+
+# タイムアウト設定
+timeout: '1800s'  # 30分
+
+# Cloud Build履歴保持
+tags:
+  - 'm4a-transcribe'
+  - 'production'
+  - 'e2-deployment'

@@ -1,0 +1,180 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'リリースバージョン'
+        required: true
+        default: 'v1.0.0'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # リリース用Docker イメージのビルド
+  build-release-image:
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG=${{ github.event.release.tag_name }}
+          else
+            TAG=${{ github.event.inputs.version }}
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Generated tag: $TAG"
+
+      - name: Build and push release image
+        run: |
+          IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}"
+          STABLE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable"
+          
+          # 本番用イメージをビルド
+          docker build \
+            --target production \
+            --build-arg VERSION=${{ steps.tag.outputs.tag }} \
+            --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+            --build-arg VCS_REF=${{ github.sha }} \
+            -t $IMAGE_TAG \
+            -t $STABLE_TAG \
+            .
+          
+          # イメージをプッシュ
+          docker push $IMAGE_TAG
+          docker push $STABLE_TAG
+          
+          echo "リリースイメージを作成しました: $IMAGE_TAG"
+
+      - name: Update deployment configuration
+        run: |
+          # リリース用のDocker Compose設定を更新
+          sed -i "s|image:.*|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}|" docker-compose.prod.yml
+          
+          # 設定ファイルをアーティファクトとして保存
+          mkdir -p release-artifacts
+          cp docker-compose.prod.yml release-artifacts/
+          cp nginx.prod.conf release-artifacts/
+          cp redis.conf release-artifacts/
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: release-${{ steps.tag.outputs.tag }}
+          path: release-artifacts/
+
+  # リリースノートの自動生成
+  generate-release-notes:
+    runs-on: ubuntu-latest
+    needs: [build-release-image]
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        run: |
+          # 前回のリリースタグを取得
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+          
+          if [ -z "$PREVIOUS_TAG" ]; then
+            echo "# 変更履歴" > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            echo "## ${{ github.event.inputs.version }}" >> CHANGELOG.md
+            echo "- 初回リリース" >> CHANGELOG.md
+          else
+            echo "# 変更履歴" > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            echo "## ${{ github.event.inputs.version }}" >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            
+            # コミット履歴から変更内容を抽出
+            git log ${PREVIOUS_TAG}..HEAD --oneline --pretty=format:"- %s" >> CHANGELOG.md
+          fi
+          
+          echo "" >> CHANGELOG.md
+          echo "## リリース情報" >> CHANGELOG.md
+          echo "- **バージョン**: ${{ github.event.inputs.version }}" >> CHANGELOG.md
+          echo "- **リリース日**: $(date +'%Y-%m-%d')" >> CHANGELOG.md
+          echo "- **コミット**: ${{ github.sha }}" >> CHANGELOG.md
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          release_name: M4A Transcribe ${{ github.event.inputs.version }}
+          body_path: CHANGELOG.md
+          draft: false
+          prerelease: false
+
+  # セキュリティスキャンとSBOM生成
+  security-and-sbom:
+    runs-on: ubuntu-latest
+    needs: [build-release-image]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run comprehensive security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-release-image.outputs.image_tag }}'
+          format: 'json'
+          output: 'security-report.json'
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-release-image.outputs.image_tag }}'
+          format: 'spdx-json'
+          output-file: 'sbom.spdx.json'
+
+      - name: Upload security artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-${{ needs.build-release-image.outputs.image_tag }}
+          path: |
+            security-report.json
+            sbom.spdx.json
+
+  # リリース通知
+  notify-release:
+    runs-on: ubuntu-latest
+    needs: [build-release-image, generate-release-notes, security-and-sbom]
+    if: always()
+    steps:
+      - name: Notify successful release
+        if: needs.build-release-image.result == 'success'
+        run: |
+          echo "🎉 リリース ${{ needs.build-release-image.outputs.image_tag }} が正常に完了しました"
+          echo "📦 Docker イメージ: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-release-image.outputs.image_tag }}"
+          
+      - name: Notify failed release
+        if: needs.build-release-image.result == 'failure'
+        run: |
+          echo "❌ リリースに失敗しました"
+          exit 1

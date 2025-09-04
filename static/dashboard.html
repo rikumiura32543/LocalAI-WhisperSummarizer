@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>M4A転写システム - 管理ダッシュボード</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+
+        .dashboard {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            border-radius: 10px;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            margin-left: 1rem;
+        }
+
+        .status-healthy {
+            background-color: #10b981;
+            color: white;
+        }
+
+        .status-warning {
+            background-color: #f59e0b;
+            color: white;
+        }
+
+        .status-error {
+            background-color: #ef4444;
+            color: white;
+        }
+
+        .grid {
+            display: grid;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .grid-overview {
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        }
+
+        .grid-main {
+            grid-template-columns: 2fr 1fr;
+        }
+
+        .card {
+            background: white;
+            border-radius: 10px;
+            padding: 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+
+        .card h3 {
+            color: #374151;
+            margin-bottom: 1rem;
+            font-size: 1.25rem;
+        }
+
+        .metric-card {
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 3rem;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 0.5rem;
+        }
+
+        .metric-label {
+            color: #6b7280;
+            font-size: 1.1rem;
+        }
+
+        .metric-trend {
+            margin-top: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .trend-up {
+            color: #10b981;
+        }
+
+        .trend-down {
+            color: #ef4444;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #e5e7eb;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 1rem 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.3s ease;
+        }
+
+        .progress-safe {
+            background: linear-gradient(90deg, #10b981, #34d399);
+        }
+
+        .progress-warning {
+            background: linear-gradient(90deg, #f59e0b, #fbbf24);
+        }
+
+        .progress-danger {
+            background: linear-gradient(90deg, #ef4444, #f87171);
+        }
+
+        .chart-container {
+            height: 300px;
+            margin: 1rem 0;
+            position: relative;
+        }
+
+        .chart-placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            background: #f9fafb;
+            border: 2px dashed #d1d5db;
+            border-radius: 8px;
+            color: #6b7280;
+            font-size: 1.1rem;
+        }
+
+        .alert-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .alert-item {
+            padding: 1rem;
+            border-left: 4px solid #ef4444;
+            background: #fef2f2;
+            margin-bottom: 1rem;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .alert-item.warning {
+            border-left-color: #f59e0b;
+            background: #fffbeb;
+        }
+
+        .alert-title {
+            font-weight: bold;
+            color: #374151;
+            margin-bottom: 0.5rem;
+        }
+
+        .alert-time {
+            font-size: 0.9rem;
+            color: #6b7280;
+        }
+
+        .stats-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        .stats-table th,
+        .stats-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .stats-table th {
+            background-color: #f9fafb;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .refresh-button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            margin-bottom: 1rem;
+        }
+
+        .refresh-button:hover {
+            background: #5a67d8;
+        }
+
+        .refresh-button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 0.5rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #991b1b;
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 3rem;
+            padding: 2rem;
+            color: #6b7280;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        @media (max-width: 768px) {
+            .grid-main {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .metric-value {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <div class="header">
+            <h1>M4A転写システム管理ダッシュボード</h1>
+            <p>システム状態とパフォーマンスの監視
+                <span id="system-status" class="status-indicator status-healthy">正常稼働中</span>
+            </p>
+        </div>
+
+        <button class="refresh-button" id="refresh-btn" onclick="refreshDashboard()">
+            データを更新
+            <span id="loading" class="loading" style="display: none;"></span>
+        </button>
+
+        <div class="grid grid-overview">
+            <div class="card metric-card">
+                <div class="metric-value" id="total-jobs">-</div>
+                <div class="metric-label">総処理ジョブ数</div>
+                <div class="metric-trend" id="jobs-trend">-</div>
+            </div>
+            
+            <div class="card metric-card">
+                <div class="metric-value" id="completion-rate">-</div>
+                <div class="metric-label">完了率 (%)</div>
+                <div class="metric-trend" id="completion-trend">-</div>
+            </div>
+            
+            <div class="card metric-card">
+                <div class="metric-value" id="error-rate">-</div>
+                <div class="metric-label">エラー率 (24h)</div>
+                <div class="metric-trend" id="error-trend">-</div>
+            </div>
+            
+            <div class="card metric-card">
+                <div class="metric-value" id="active-alerts">-</div>
+                <div class="metric-label">アクティブアラート</div>
+                <div class="metric-trend" id="alerts-trend">-</div>
+            </div>
+        </div>
+
+        <div class="grid grid-main">
+            <div class="card">
+                <h3>システムリソース</h3>
+                
+                <div style="margin-bottom: 1.5rem;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                        <span>CPU使用率</span>
+                        <span id="cpu-percent">-%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill progress-safe" id="cpu-progress" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 1.5rem;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                        <span>メモリ使用率</span>
+                        <span id="memory-percent">-%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill progress-safe" id="memory-progress" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 1.5rem;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                        <span>稼働時間</span>
+                        <span id="uptime">-</span>
+                    </div>
+                </div>
+
+                <div class="chart-container">
+                    <div class="chart-placeholder">
+                        システムメトリクス グラフ<br>
+                        <small>（実装予定）</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>アクティブアラート</h3>
+                <div class="alert-list" id="alerts-container">
+                    <div style="text-align: center; color: #6b7280; padding: 2rem;">
+                        アクティブなアラートはありません
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-overview">
+            <div class="card">
+                <h3>パフォーマンス統計</h3>
+                <table class="stats-table">
+                    <thead>
+                        <tr>
+                            <th>メトリック</th>
+                            <th>値</th>
+                        </tr>
+                    </thead>
+                    <tbody id="performance-stats">
+                        <tr><td colspan="2" style="text-align: center; color: #6b7280;">読み込み中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card">
+                <h3>データベース統計</h3>
+                <div id="db-stats">
+                    <div style="text-align: center; color: #6b7280; padding: 2rem;">
+                        読み込み中...
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>キャッシュ統計</h3>
+                <div id="cache-stats">
+                    <div style="text-align: center; color: #6b7280; padding: 2rem;">
+                        読み込み中...
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>最近の処理状況</h3>
+                <div class="chart-container">
+                    <div class="chart-placeholder">
+                        処理ジョブ推移グラフ<br>
+                        <small>（実装予定）</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>M4A転写システム v1.0.0 | 最終更新: <span id="last-updated">-</span></p>
+        </div>
+    </div>
+
+    <script>
+        class Dashboard {
+            constructor() {
+                this.refreshInterval = null;
+                this.autoRefreshEnabled = false;
+                this.init();
+            }
+
+            async init() {
+                await this.refreshDashboard();
+                this.startAutoRefresh(30000); // 30秒間隔
+            }
+
+            async refreshDashboard() {
+                const refreshBtn = document.getElementById('refresh-btn');
+                const loading = document.getElementById('loading');
+                
+                try {
+                    refreshBtn.disabled = true;
+                    loading.style.display = 'inline-block';
+
+                    // 並行してデータ取得
+                    const [dashboardData, alerts, dbStats] = await Promise.all([
+                        this.fetchDashboardData(),
+                        this.fetchAlerts(),
+                        this.fetchDatabaseStats()
+                    ]);
+
+                    this.updateOverviewMetrics(dashboardData);
+                    this.updateSystemResources(dashboardData.system);
+                    this.updateAlerts(alerts);
+                    this.updatePerformanceStats(dashboardData.performance);
+                    this.updateDatabaseStats(dbStats);
+                    this.updateCacheStats(dashboardData.cache);
+
+                    document.getElementById('last-updated').textContent = new Date().toLocaleString('ja-JP');
+                    
+                } catch (error) {
+                    console.error('Dashboard refresh failed:', error);
+                    this.showError('データの更新に失敗しました: ' + error.message);
+                } finally {
+                    refreshBtn.disabled = false;
+                    loading.style.display = 'none';
+                }
+            }
+
+            async fetchDashboardData() {
+                const response = await fetch('/api/v1/monitoring/dashboard-data');
+                if (!response.ok) throw new Error('Dashboard data fetch failed');
+                const result = await response.json();
+                return result.data;
+            }
+
+            async fetchAlerts() {
+                const response = await fetch('/api/v1/monitoring/alerts');
+                if (!response.ok) throw new Error('Alerts fetch failed');
+                const result = await response.json();
+                return result.data;
+            }
+
+            async fetchDatabaseStats() {
+                const response = await fetch('/api/v1/monitoring/database-stats');
+                if (!response.ok) throw new Error('Database stats fetch failed');
+                const result = await response.json();
+                return result.data;
+            }
+
+            updateOverviewMetrics(data) {
+                const overview = data.overview;
+                
+                document.getElementById('total-jobs').textContent = overview.total_jobs.toLocaleString();
+                document.getElementById('completion-rate').textContent = Math.round(overview.completion_rate);
+                document.getElementById('error-rate').textContent = overview.error_rate_24h.toFixed(1) + '%';
+                document.getElementById('active-alerts').textContent = overview.active_alerts;
+
+                // システム状態表示
+                const statusElement = document.getElementById('system-status');
+                if (overview.active_alerts > 0) {
+                    statusElement.className = 'status-indicator status-warning';
+                    statusElement.textContent = 'アラート有';
+                } else if (overview.error_rate_24h > 5) {
+                    statusElement.className = 'status-indicator status-warning';
+                    statusElement.textContent = '注意';
+                } else {
+                    statusElement.className = 'status-indicator status-healthy';
+                    statusElement.textContent = '正常稼働中';
+                }
+            }
+
+            updateSystemResources(system) {
+                // CPU
+                document.getElementById('cpu-percent').textContent = Math.round(system.cpu_percent) + '%';
+                const cpuProgress = document.getElementById('cpu-progress');
+                cpuProgress.style.width = system.cpu_percent + '%';
+                cpuProgress.className = 'progress-fill ' + this.getProgressClass(system.cpu_percent);
+
+                // Memory
+                document.getElementById('memory-percent').textContent = Math.round(system.memory_percent) + '%';
+                const memoryProgress = document.getElementById('memory-progress');
+                memoryProgress.style.width = system.memory_percent + '%';
+                memoryProgress.className = 'progress-fill ' + this.getProgressClass(system.memory_percent);
+
+                // Uptime
+                const uptimeHours = Math.round(system.uptime_hours);
+                document.getElementById('uptime').textContent = `${uptimeHours}時間`;
+            }
+
+            updateAlerts(alertsData) {
+                const container = document.getElementById('alerts-container');
+                
+                if (alertsData.alerts.length === 0) {
+                    container.innerHTML = `
+                        <div style="text-align: center; color: #6b7280; padding: 2rem;">
+                            アクティブなアラートはありません
+                        </div>
+                    `;
+                    return;
+                }
+
+                container.innerHTML = alertsData.alerts.map(alert => `
+                    <div class="alert-item">
+                        <div class="alert-title">${alert.name}</div>
+                        <div class="alert-time">
+                            ${Math.round(alert.duration_minutes)}分前から継続中
+                            | 現在値: ${alert.latest_value}
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            updatePerformanceStats(performance) {
+                const tbody = document.getElementById('performance-stats');
+                
+                if (!performance || Object.keys(performance).length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="2" style="text-align: center; color: #6b7280;">データがありません</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = [
+                    ['総リクエスト数', performance.total_requests?.toLocaleString() || 'N/A'],
+                    ['平均レスポンス時間', performance.avg_response_time ? (performance.avg_response_time * 1000).toFixed(2) + 'ms' : 'N/A'],
+                    ['最大レスポンス時間', performance.max_response_time ? (performance.max_response_time * 1000).toFixed(2) + 'ms' : 'N/A'],
+                    ['エラー数', performance.error_count?.toLocaleString() || 'N/A']
+                ].map(([label, value]) => `
+                    <tr>
+                        <td>${label}</td>
+                        <td><strong>${value}</strong></td>
+                    </tr>
+                `).join('');
+            }
+
+            updateDatabaseStats(dbStats) {
+                const container = document.getElementById('db-stats');
+                
+                if (!dbStats) {
+                    container.innerHTML = '<div style="text-align: center; color: #6b7280; padding: 2rem;">データの取得に失敗しました</div>';
+                    return;
+                }
+
+                const statusDist = dbStats.job_status_distribution || [];
+                const sizeStats = dbStats.file_size_stats || {};
+
+                container.innerHTML = `
+                    <div style="margin-bottom: 1rem;">
+                        <strong>ジョブ状態分布:</strong>
+                        ${statusDist.map(item => `
+                            <div style="display: flex; justify-content: space-between; padding: 0.25rem 0;">
+                                <span>${item.status}</span>
+                                <span>${item.count.toLocaleString()}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div>
+                        <strong>ファイルサイズ統計:</strong>
+                        <div style="display: flex; justify-content: space-between; padding: 0.25rem 0;">
+                            <span>平均</span>
+                            <span>${this.formatFileSize(sizeStats.average_bytes || 0)}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 0.25rem 0;">
+                            <span>最大</span>
+                            <span>${this.formatFileSize(sizeStats.maximum_bytes || 0)}</span>
+                        </div>
+                    </div>
+                `;
+            }
+
+            updateCacheStats(cacheStats) {
+                const container = document.getElementById('cache-stats');
+                
+                if (!cacheStats.enabled) {
+                    container.innerHTML = '<div style="text-align: center; color: #6b7280; padding: 2rem;">キャッシュが無効です</div>';
+                    return;
+                }
+
+                container.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; padding: 0.25rem 0;">
+                        <span>使用メモリ</span>
+                        <span>${cacheStats.used_memory_human || 'N/A'}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding: 0.25rem 0;">
+                        <span>ヒット数</span>
+                        <span>${(cacheStats.keyspace_hits || 0).toLocaleString()}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding: 0.25rem 0;">
+                        <span>ミス数</span>
+                        <span>${(cacheStats.keyspace_misses || 0).toLocaleString()}</span>
+                    </div>
+                `;
+            }
+
+            getProgressClass(value) {
+                if (value < 70) return 'progress-safe';
+                if (value < 90) return 'progress-warning';
+                return 'progress-danger';
+            }
+
+            formatFileSize(bytes) {
+                if (bytes === 0) return '0 B';
+                const sizes = ['B', 'KB', 'MB', 'GB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(1024));
+                return (bytes / Math.pow(1024, i)).toFixed(2) + ' ' + sizes[i];
+            }
+
+            showError(message) {
+                // エラーメッセージ表示（簡易実装）
+                console.error(message);
+            }
+
+            startAutoRefresh(interval) {
+                if (this.refreshInterval) {
+                    clearInterval(this.refreshInterval);
+                }
+                
+                this.refreshInterval = setInterval(() => {
+                    this.refreshDashboard();
+                }, interval);
+                
+                this.autoRefreshEnabled = true;
+            }
+
+            stopAutoRefresh() {
+                if (this.refreshInterval) {
+                    clearInterval(this.refreshInterval);
+                    this.refreshInterval = null;
+                }
+                this.autoRefreshEnabled = false;
+            }
+        }
+
+        // グローバル関数
+        let dashboard;
+
+        function refreshDashboard() {
+            if (dashboard) {
+                dashboard.refreshDashboard();
+            }
+        }
+
+        // ページ読み込み時の初期化
+        document.addEventListener('DOMContentLoaded', function() {
+            dashboard = new Dashboard();
+        });
+
+        // ページがバックグラウンドになった時は自動更新を停止
+        document.addEventListener('visibilitychange', function() {
+            if (dashboard) {
+                if (document.hidden) {
+                    dashboard.stopAutoRefresh();
+                } else {
+                    dashboard.startAutoRefresh(30000);
+                }
+            }
+        });
+    </script>
+</body>
+</html>
