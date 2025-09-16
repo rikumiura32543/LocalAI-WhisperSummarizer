@@ -49,7 +49,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # プロジェクトファイルのコピー
-COPY pyproject.toml uv.lock* ./
+COPY pyproject.toml ./
 
 # 依存関係のインストール（開発用も含む）
 RUN uv venv && \
@@ -81,12 +81,12 @@ FROM base as production
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 # プロジェクトファイルのコピー
-COPY pyproject.toml uv.lock* ./
+COPY pyproject.toml ./
 
 # 本番用依存関係のインストール（Google Cloud E2最適化）
 RUN uv venv && \
     . .venv/bin/activate && \
-    uv pip install . --no-dev && \
+    uv pip install . && \
     # Pythonキャッシュクリーンアップ
     find /app/.venv -name "*.pyc" -delete && \
     find /app/.venv -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
@@ -140,7 +140,7 @@ FROM base as ci
 RUN pip install uv
 
 # プロジェクトファイルのコピー
-COPY pyproject.toml uv.lock* ./
+COPY pyproject.toml ./
 
 # CI用依存関係のインストール
 RUN uv venv && \
