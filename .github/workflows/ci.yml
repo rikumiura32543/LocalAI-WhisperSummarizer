@@ -125,141 +125,38 @@ jobs:
             echo "SARIF file size: $(wc -c < trivy-results.sarif) bytes"
           fi
 
-  # Docker イメージビルドとテスト
-  build-and-test-docker:
-    runs-on: ubuntu-latest
-    needs: [lint-and-test]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+  # TODO: Docker ビルドとデプロイメント（開発が進んだら有効化）
+  # build-and-test-docker:
+  #   runs-on: ubuntu-latest
+  #   needs: [lint-and-test]
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #     - name: Set up Docker Buildx
+  #       uses: docker/setup-buildx-action@v3
+  #     - name: Build development image
+  #       run: docker build --target development -t m4a-transcribe:dev .
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+  # prepare-deployment:
+  #   runs-on: ubuntu-latest
+  #   needs: [lint-and-test, security-scan]
+  #   if: github.ref == 'refs/heads/main'
+  #   steps:
+  #     - name: Placeholder for future deployment
+  #       run: echo "デプロイメント機能は開発が進んだら追加予定"
 
-      - name: Build development image
-        run: |
-          docker build --target development -t m4a-transcribe:dev .
+  # deploy-to-gce:
+  #   runs-on: ubuntu-latest
+  #   needs: [prepare-deployment]
+  #   if: github.ref == 'refs/heads/main'
+  #   steps:
+  #     - name: Placeholder for future deployment
+  #       run: echo "本番デプロイは開発が進んだら追加予定"
 
-      - name: Build production image
-        run: |
-          docker build --target production -t m4a-transcribe:prod .
-
-      - name: Run container tests
-        run: |
-          # 開発イメージのテスト
-          docker run --rm m4a-transcribe:dev python -c "import app; print('開発イメージ正常')"
-          
-          # 本番イメージのテスト
-          docker run --rm m4a-transcribe:prod python -c "import app; print('本番イメージ正常')"
-
-      - name: Test Docker Compose
-        run: |
-          # CI用のDocker Compose設定でテスト
-          docker-compose -f docker-compose.yml config
-          docker-compose -f docker-compose.prod.yml config
-
-  # Google Cloud deploymentの準備
-  prepare-deployment:
-    runs-on: ubuntu-latest
-    needs: [lint-and-test, security-scan, build-and-test-docker]
-    if: github.ref == 'refs/heads/main'
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Generate version
-        id: version
-        run: |
-          VERSION=$(date +%Y%m%d%H%M%S)-$(git rev-parse --short HEAD)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Generated version: $VERSION"
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push Docker image
-        run: |
-          IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}"
-          LATEST_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
-          
-          docker build --target production -t $IMAGE_TAG -t $LATEST_TAG .
-          docker push $IMAGE_TAG
-          docker push $LATEST_TAG
-
-  # Google Cloud E2への自動デプロイ
-  deploy-to-gce:
-    runs-on: ubuntu-latest
-    needs: [prepare-deployment]
-    if: github.ref == 'refs/heads/main'
-    environment: production
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Google Cloud CLI
-        uses: google-github-actions/setup-gcloud@v1
-        with:
-          service_account_key: ${{ secrets.GCP_SA_KEY }}
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-
-      - name: Configure Docker for GCR
-        run: gcloud auth configure-docker
-
-      - name: Deploy to Google Cloud E2
-        run: |
-          # インスタンスに接続してデプロイスクリプト実行
-          gcloud compute ssh ${{ secrets.GCE_INSTANCE_NAME }} \
-            --zone=${{ secrets.GCE_ZONE }} \
-            --command="
-              # 最新のDocker Composeファイルをダウンロード
-              curl -o docker-compose.prod.yml https://raw.githubusercontent.com/${{ github.repository }}/main/docker-compose.prod.yml
-              
-              # 新しいイメージをプル
-              docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare-deployment.outputs.version }}
-              
-              # アプリケーションを停止
-              docker-compose -f docker-compose.prod.yml down
-              
-              # 新しいバージョンでアプリケーションを起動
-              IMAGE_TAG=${{ needs.prepare-deployment.outputs.version }} docker-compose -f docker-compose.prod.yml up -d
-              
-              # ヘルスチェック
-              sleep 30
-              curl -f http://localhost:8000/health || exit 1
-              
-              echo 'デプロイ完了: ${{ needs.prepare-deployment.outputs.version }}'
-            "
-
-      - name: Notify deployment status
-        if: always()
-        run: |
-          if [ "${{ job.status }}" == "success" ]; then
-            echo "✅ デプロイが正常に完了しました"
-          else
-            echo "❌ デプロイに失敗しました"
-            exit 1
-          fi
-
-  # 本番環境の動作確認
-  post-deploy-verification:
-    runs-on: ubuntu-latest
-    needs: [deploy-to-gce]
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - name: Health check
-        run: |
-          # 本番サーバーのヘルスチェック
-          curl -f ${{ secrets.PRODUCTION_URL }}/health
-          
-      - name: Basic functionality test
-        run: |
-          # 基本的なAPI動作確認
-          curl -f ${{ secrets.PRODUCTION_URL }}/api/v1/status
-          
-          echo "本番環境の動作確認が完了しました"
+  # post-deploy-verification:
+  #   runs-on: ubuntu-latest
+  #   needs: [deploy-to-gce]
+  #   if: github.ref == 'refs/heads/main'
+  #   steps:
+  #     - name: Placeholder for future verification
+  #       run: echo "本番環境テストは開発が進んだら追加予定"
