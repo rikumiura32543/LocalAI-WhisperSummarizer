@@ -1,19 +1,20 @@
-name: Production Deployment
+# TODO: 本番デプロイワークフロー（開発が進んだら有効化）
+# name: Production Deployment
 
+# 一時的に無効化（必要なSecrets設定が未完了のため）
 on:
-  push:
-    branches: [ main ]
-    tags: [ 'v*' ]
+  # push:
+  #   branches: [ main ]
+  #   tags: [ 'v*' ]
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Deployment environment'
+        description: 'Deployment environment (現在無効化中)'
         required: true
-        default: 'production'
+        default: 'disabled'
         type: choice
         options:
-          - production
-          - staging
+          - disabled
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
