@@ -969,6 +969,414 @@ class M4ATranscriptionApp {
     }
 
     /**
+     * 処理完了時に結果を表示
+     */
+    async showResults(job) {
+        try {
+            console.log('📋 Showing results for job:', job.id);
+            
+            // 結果セクションを表示
+            this.showResultsSection();
+            
+            // 詳細結果を取得
+            const response = await fetch(`/api/v1/transcriptions/${job.id}`);
+            if (!response.ok) {
+                throw new Error(`結果取得エラー: ${response.status}`);
+            }
+            
+            const resultData = await response.json();
+            console.log('📊 Result data received:', resultData);
+            
+            // 結果をUIに表示
+            this.displayResults(resultData);
+            
+            // 成功トースト表示
+            this.showToast('処理が完了しました！', 'success');
+            
+        } catch (error) {
+            console.error('❌ Error showing results:', error);
+            this.showError('結果表示エラー', error.message);
+        }
+    }
+
+    /**
+     * 結果データをUIに表示
+     */
+    async displayResults(jobData) {
+        if (!jobData) {
+            console.warn('❌ No job data to display');
+            return;
+        }
+        
+        // 結果セクション内のコンテンツを直接更新
+        const resultsSection = this.elements.resultsSection;
+        if (!resultsSection) {
+            console.warn('❌ Results section not found');
+            return;
+        }
+        
+        // 処理時間計算
+        const processingTime = jobData.processing_completed_at && jobData.processing_started_at 
+            ? (new Date(jobData.processing_completed_at) - new Date(jobData.processing_started_at)) / 1000
+            : 0;
+        
+        // 転写結果の表示準備
+        let transcriptionText = '転写結果なし';
+        if (jobData.transcription_result && jobData.transcription_result.text) {
+            transcriptionText = jobData.transcription_result.text;
+        }
+        
+        // AI要約を取得
+        let summaryText = null;
+        let summaryAvailable = false;
+        
+        try {
+            const summaryResponse = await fetch(`/api/v1/transcriptions/${jobData.id}/summary`);
+            if (summaryResponse.ok) {
+                const summaryData = await summaryResponse.json();
+                console.log('要約データ受信:', summaryData);
+                
+                // APIレスポンス構造に合わせて修正
+                if (summaryData.formatted_text) {
+                    summaryText = summaryData.formatted_text;
+                    summaryAvailable = true;
+                } else if (summaryData.ai_summary && summaryData.ai_summary.formatted_text) {
+                    summaryText = summaryData.ai_summary.formatted_text;
+                    summaryAvailable = true;
+                } else {
+                    console.log('要約データがまだ生成されていません');
+                }
+            } else if (summaryResponse.status === 404) {
+                console.log('要約がまだ生成されていません (404)');
+            }
+        } catch (error) {
+            console.warn('要約データの取得に失敗:', error);
+        }
+        
+        // 音声書き起こしテキストを整形（句読点・改行追加）
+        const formattedTranscription = this.formatTranscriptionText(transcriptionText);
+        
+        // 要約が利用できない場合は待機してから再表示
+        if (!summaryAvailable) {
+            this.displayResultsWithPendingSummary(jobData, formattedTranscription);
+            this.waitForSummaryAndUpdate(jobData.id);
+            return;
+        }
+        
+        // AI要約をマークダウン形式に整形
+        const formattedSummary = this.formatSummaryText(summaryText);
+        
+        // 結果を縦並びで表示（AI要約 → 音声書き起こし の順）
+        resultsSection.innerHTML = `
+            <div class="results-content">
+                <div class="result-header">
+                    <h2>処理完了</h2>
+                    <div class="metadata-info">
+                        <p><strong>ファイル名:</strong> ${jobData.original_filename || 'N/A'}</p>
+                        <p><strong>処理時間:</strong> ${processingTime.toFixed(1)}秒</p>
+                        <p><strong>音声長:</strong> ${jobData.audio_file?.duration_seconds?.toFixed(1) || 0}秒</p>
+                    </div>
+                </div>
+                
+                <div class="summary-section">
+                    <div class="section-header">
+                        <h3>AI要約</h3>
+                        <button class="btn btn-sm btn-outline" onclick="window.m4aApp.downloadSummary('${jobData.id}')">
+                            要約をダウンロード
+                        </button>
+                    </div>
+                    <div class="result-box summary-box">
+                        <div class="markdown-content">${formattedSummary}</div>
+                    </div>
+                </div>
+                
+                <div class="transcription-section">
+                    <div class="section-header">
+                        <h3>音声書き起こし</h3>
+                        <button class="btn btn-sm btn-outline" onclick="window.m4aApp.downloadTranscription('${jobData.id}')">
+                            書き起こしをダウンロード
+                        </button>
+                    </div>
+                    <div class="result-box transcription-box">
+                        <pre>${formattedTranscription}</pre>
+                    </div>
+                </div>
+                
+                <div class="action-buttons">
+                    <button class="btn btn-secondary" onclick="window.m4aApp.resetApp()">
+                        新しいファイルを処理
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * 要約が生成中の状態で結果を表示
+     */
+    displayResultsWithPendingSummary(jobData, formattedTranscription) {
+        const resultsSection = this.elements.resultsSection;
+        const processingTime = jobData.processing_completed_at && jobData.processing_started_at 
+            ? (new Date(jobData.processing_completed_at) - new Date(jobData.processing_started_at)) / 1000
+            : 0;
+        
+        resultsSection.innerHTML = `
+            <div class="results-content">
+                <div class="result-header">
+                    <h2>処理完了</h2>
+                    <div class="metadata-info">
+                        <p><strong>ファイル名:</strong> ${jobData.original_filename || 'N/A'}</p>
+                        <p><strong>処理時間:</strong> ${processingTime.toFixed(1)}秒</p>
+                        <p><strong>音声長:</strong> ${jobData.audio_file?.duration_seconds?.toFixed(1) || 0}秒</p>
+                    </div>
+                </div>
+                
+                <div class="summary-section">
+                    <div class="section-header">
+                        <h3>AI要約</h3>
+                        <span class="loading-indicator">生成中...</span>
+                    </div>
+                    <div class="result-box summary-box">
+                        <div class="loading-content">
+                            <div class="loading-spinner"></div>
+                            <p>AI要約を生成しています。しばらくお待ちください...</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="transcription-section">
+                    <div class="section-header">
+                        <h3>音声書き起こし</h3>
+                        <button class="btn btn-sm btn-outline" onclick="window.m4aApp.downloadTranscription('${jobData.id}')">
+                            書き起こしをダウンロード
+                        </button>
+                    </div>
+                    <div class="result-box transcription-box">
+                        <pre>${formattedTranscription}</pre>
+                    </div>
+                </div>
+                
+                <div class="action-buttons">
+                    <button class="btn btn-secondary" onclick="window.m4aApp.resetApp()">
+                        新しいファイルを処理
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * 要約生成完了まで待機して結果を更新
+     */
+    async waitForSummaryAndUpdate(jobId) {
+        const maxAttempts = 30; // 最大30回試行（5分間）
+        const retryInterval = 10000; // 10秒間隔
+        
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            console.log(`要約チェック試行 ${attempt}/${maxAttempts}`);
+            
+            try {
+                await new Promise(resolve => setTimeout(resolve, retryInterval));
+                
+                const summaryResponse = await fetch(`/api/v1/transcriptions/${jobId}/summary`);
+                if (summaryResponse.ok) {
+                    const summaryData = await summaryResponse.json();
+                    let formattedText = null;
+                    
+                    if (summaryData.formatted_text) {
+                        formattedText = summaryData.formatted_text;
+                    } else if (summaryData.ai_summary && summaryData.ai_summary.formatted_text) {
+                        formattedText = summaryData.ai_summary.formatted_text;
+                    }
+                    
+                    if (formattedText) {
+                        console.log('✅ AI要約生成完了！');
+                        this.updateSummarySection(formattedText, jobId);
+                        return;
+                    }
+                }
+            } catch (error) {
+                console.warn(`要約チェック失敗 (試行 ${attempt}):`, error);
+            }
+        }
+        
+        // タイムアウト時の処理
+        console.warn('⚠️ AI要約生成がタイムアウトしました');
+        this.updateSummarySection('要約生成がタイムアウトしました。後ほど再度お試しください。', jobId, true);
+    }
+
+    /**
+     * 要約セクションのみを更新
+     */
+    updateSummarySection(summaryText, jobId, isError = false) {
+        const summarySection = document.querySelector('.summary-section');
+        if (!summarySection) return;
+        
+        const formattedSummary = isError ? `<p class="error-text">${summaryText}</p>` : this.formatSummaryText(summaryText);
+        
+        summarySection.innerHTML = `
+            <div class="section-header">
+                <h3>AI要約</h3>
+                ${isError ? '' : `<button class="btn btn-sm btn-outline" onclick="window.m4aApp.downloadSummary('${jobId}')">要約をダウンロード</button>`}
+            </div>
+            <div class="result-box summary-box">
+                <div class="markdown-content">${formattedSummary}</div>
+            </div>
+        `;
+    }
+
+    /**
+     * アプリをリセットして最初の画面に戻る
+     */
+    resetApp() {
+        // プログレスをリセット
+        this.currentJobId = null;
+        this.stopProgressMonitoring();
+        
+        // UI表示をリセット
+        this.showUploadSection();
+        this.elements.processingSection.style.display = 'none';
+        this.elements.resultsSection.style.display = 'none';
+        this.elements.errorSection.style.display = 'none';
+        
+        // ファイル入力をリセット
+        const fileInput = document.getElementById('audio-file');
+        if (fileInput) {
+            fileInput.value = '';
+        }
+        
+        console.log('🔄 App reset completed');
+    }
+
+    /**
+     * 音声書き起こしテキストを整形（句読点・改行追加）
+     */
+    formatTranscriptionText(text) {
+        if (!text || text === '転写結果なし') {
+            return 'テキストが取得できませんでした。';
+        }
+        
+        // 基本的な句読点と改行の追加
+        let formatted = text
+            // 文末に句読点を追加
+            .replace(/([。！？])(\s*)([あ-んア-ンa-zA-Z])/g, '$1\n$3')
+            // 長い文章を適度に区切る
+            .replace(/([、])(\s*)([あ-んア-ンa-zA-Z])/g, '$1 $3')
+            // 連続する空白を整理
+            .replace(/\s+/g, ' ')
+            // 改行を整理
+            .replace(/\n\s*\n/g, '\n\n');
+        
+        return formatted.trim();
+    }
+
+    /**
+     * AI要約をマークダウン形式に整形
+     */
+    formatSummaryText(text) {
+        if (!text || text === '要約結果なし' || text === '要約データを取得できませんでした') {
+            return `
+                <h2>📋 概要</h2>
+                <p>要約情報を生成中です...</p>
+                
+                <h2>📋 アクションプラン</h2>
+                <p>処理が完了次第、こちらに表示されます。</p>
+                
+                <h2>📋 議事内容詳細</h2>
+                <p>詳細な議事内容は処理完了後に表示されます。</p>
+            `;
+        }
+        
+        // マークダウン形式に変換
+        let formatted = text
+            // ## 見出しをHTMLに変換
+            .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+            // ### 見出しをHTMLに変換  
+            .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+            // **太字**をHTMLに変換
+            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+            // *斜体*をHTMLに変換
+            .replace(/\*(.+?)\*/g, '<em>$1</em>')
+            // 改行をHTMLに変換
+            .replace(/\n\n/g, '</p><p>')
+            .replace(/\n/g, '<br>');
+        
+        // セクション構造を確保
+        if (!formatted.includes('概要') && !formatted.includes('アクションプラン') && !formatted.includes('議事内容')) {
+            formatted = `
+                <h2>📋 概要</h2>
+                <p>${formatted}</p>
+                
+                <h2>📋 アクションプラン</h2>
+                <p>追加のアクションプランは検討中です。</p>
+                
+                <h2>📋 議事内容詳細</h2>
+                <p>詳細な内容については上記概要をご参照ください。</p>
+            `;
+        }
+        
+        return formatted;
+    }
+
+    /**
+     * AI要約をダウンロード
+     */
+    downloadSummary(jobId) {
+        console.log('📥 Download summary for job:', jobId);
+        const summaryElement = document.querySelector('.summary-box .markdown-content');
+        if (summaryElement) {
+            const content = summaryElement.innerText;
+            this.downloadTextFile(content, `summary_${jobId}.txt`);
+        }
+    }
+
+    /**
+     * 音声書き起こしをダウンロード
+     */
+    downloadTranscription(jobId) {
+        console.log('📥 Download transcription for job:', jobId);
+        const transcriptionElement = document.querySelector('.transcription-box pre');
+        if (transcriptionElement) {
+            const content = transcriptionElement.innerText;
+            this.downloadTextFile(content, `transcription_${jobId}.txt`);
+        }
+    }
+
+    /**
+     * テキストファイルをダウンロード
+     */
+    downloadTextFile(content, filename) {
+        const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    /**
+     * タブ切り替え
+     */
+    switchTab(tabName) {
+        // タブボタンの状態を更新
+        const allTabs = document.querySelectorAll('.tab-button');
+        allTabs.forEach(tab => tab.classList.remove('active'));
+        
+        if (tabName === 'transcription') {
+            this.elements.transcriptionTab.classList.add('active');
+            document.getElementById('transcription-content').style.display = 'block';
+            document.getElementById('summary-content').style.display = 'none';
+        } else if (tabName === 'summary') {
+            this.elements.summaryTab.classList.add('active');
+            document.getElementById('transcription-content').style.display = 'none';
+            document.getElementById('summary-content').style.display = 'block';
+        }
+    }
+
+    /**
      * エラーセクションを表示
      */
     showError(title, message) {
@@ -1057,5 +1465,5 @@ class M4ATranscriptionApp {
 
 // アプリケーションの初期化
 document.addEventListener('DOMContentLoaded', () => {
-    new M4ATranscriptionApp();
+    window.m4aApp = new M4ATranscriptionApp();
 });
