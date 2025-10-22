@@ -1275,47 +1275,71 @@ class M4ATranscriptionApp {
      */
     formatSummaryText(text) {
         if (!text || text === '要約結果なし' || text === '要約データを取得できませんでした') {
-            return `
-                <h2>📋 概要</h2>
-                <p>要約情報を生成中です...</p>
-                
-                <h2>📋 アクションプラン</h2>
-                <p>処理が完了次第、こちらに表示されます。</p>
-                
-                <h2>📋 議事内容詳細</h2>
-                <p>詳細な議事内容は処理完了後に表示されます。</p>
-            `;
+            return `<p class="placeholder">要約情報を生成中です...</p>`;
         }
-        
-        // マークダウン形式に変換
-        let formatted = text
-            // ## 見出しをHTMLに変換
-            .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-            // ### 見出しをHTMLに変換  
-            .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-            // **太字**をHTMLに変換
-            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-            // *斜体*をHTMLに変換
-            .replace(/\*(.+?)\*/g, '<em>$1</em>')
-            // 改行をHTMLに変換
-            .replace(/\n\n/g, '</p><p>')
-            .replace(/\n/g, '<br>');
-        
-        // セクション構造を確保
-        if (!formatted.includes('概要') && !formatted.includes('アクションプラン') && !formatted.includes('議事内容')) {
-            formatted = `
-                <h2>📋 概要</h2>
-                <p>${formatted}</p>
-                
-                <h2>📋 アクションプラン</h2>
-                <p>追加のアクションプランは検討中です。</p>
-                
-                <h2>📋 議事内容詳細</h2>
-                <p>詳細な内容については上記概要をご参照ください。</p>
-            `;
+
+        // プレーンテキストを整形
+        // 改行を保持し、箇条書き（•、■で始まる行）をリスト化
+        const lines = text.split('\n');
+        let formatted = '';
+        let inList = false;
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+
+            if (!line) {
+                // 空行は段落区切り
+                if (inList) {
+                    formatted += '</ul>';
+                    inList = false;
+                }
+                formatted += '<br>';
+                continue;
+            }
+
+            // 見出し（■）
+            if (line.startsWith('■')) {
+                if (inList) {
+                    formatted += '</ul>';
+                    inList = false;
+                }
+                formatted += `<h3>${this.escapeHtml(line.substring(1).trim())}</h3>`;
+                continue;
+            }
+
+            // 箇条書き（•）
+            if (line.startsWith('•')) {
+                if (!inList) {
+                    formatted += '<ul>';
+                    inList = true;
+                }
+                formatted += `<li>${this.escapeHtml(line.substring(1).trim())}</li>`;
+                continue;
+            }
+
+            // 通常のテキスト
+            if (inList) {
+                formatted += '</ul>';
+                inList = false;
+            }
+            formatted += `<p>${this.escapeHtml(line)}</p>`;
         }
-        
-        return formatted;
+
+        // リストが閉じられていない場合は閉じる
+        if (inList) {
+            formatted += '</ul>';
+        }
+
+        return formatted || `<p>${this.escapeHtml(text)}</p>`;
+    }
+
+    /**
+     * HTMLエスケープ
+     */
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     /**

@@ -192,6 +192,86 @@ class OllamaService:
         except Exception as e:
             logger.error("Unexpected error in generate_summary", error=str(e))
             raise OllamaError(f"予期しないエラー: {e}")
+
+    async def correct_transcription(self, text: str) -> Dict[str, Any]:
+        """AI文脈補正：書き起こしテキストの誤字脱字・文脈を補正"""
+        try:
+            # 文脈補正用プロンプト
+            prompt = f"""以下は音声認識システムで書き起こされた日本語テキストです。
+音声認識の誤りや不自然な表現を修正し、読みやすく整形してください。
+
+修正のルール:
+1. 誤字脱字を修正する
+2. 文脈から明らかに間違っている単語を正しい単語に置き換える
+3. 句読点を適切に追加する
+4. 改行を適切に追加して読みやすくする
+5. 元の意味を変えない
+6. 敬語や話し言葉はそのまま残す
+7. 専門用語や固有名詞は文脈から推測して正確に修正する
+
+【元のテキスト】
+{text}
+
+【修正後のテキスト】
+"""
+            
+            logger.info("Correcting transcription text",
+                       text_length=len(text),
+                       model=self.model)
+            
+            # Ollama API呼び出し
+            response = await self.client.post(
+                "/api/generate",
+                json={
+                    "model": self.model,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {
+                        "num_predict": 2000,
+                        "temperature": 0.3,  # 低めの温度で一貫性を保つ
+                        "top_p": 0.9
+                    }
+                }
+            )
+            
+            response.raise_for_status()
+            result = response.json()
+            
+            corrected_text = result.get("response", "").strip()
+            if not corrected_text:
+                logger.warning("Empty correction result, returning original text")
+                corrected_text = text
+            
+            logger.info("Transcription corrected successfully",
+                       original_length=len(text),
+                       corrected_length=len(corrected_text))
+            
+            return {
+                "corrected_text": corrected_text,
+                "original_text": text,
+                "model_used": self.model,
+                "corrections_made": len(text) != len(corrected_text)
+            }
+            
+        except httpx.HTTPError as e:
+            logger.error("HTTP error in correct_transcription", error=str(e))
+            # エラー時は元のテキストを返す
+            return {
+                "corrected_text": text,
+                "original_text": text,
+                "model_used": self.model,
+                "corrections_made": False,
+                "error": str(e)
+            }
+        except Exception as e:
+            logger.error("Unexpected error in correct_transcription", error=str(e))
+            return {
+                "corrected_text": text,
+                "original_text": text,
+                "model_used": self.model,
+                "corrections_made": False,
+                "error": str(e)
+            }
     
     def _build_summary_prompt(self, text: str, summary_type: str) -> str:
         """要約プロンプト構築"""

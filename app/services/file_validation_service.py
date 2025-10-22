@@ -73,6 +73,17 @@ class FileValidationService:
         except Exception as e:
             logger.error("Failed to initialize libmagic", error=str(e))
             raise
+
+    @staticmethod
+    def _normalize_mime_type(mime_type: str) -> str:
+        """MIMEタイプを正規化してデータベース制約に合わせる"""
+        normalization_map = {
+            'audio/x-m4a': 'audio/m4a',
+            'audio/wave': 'audio/wav',
+            'audio/x-wav': 'audio/wav',
+            'audio/mpeg': 'audio/mp3',
+        }
+        return normalization_map.get(mime_type, mime_type)
     
     def validate_file(self, file_path: Path) -> FileValidationResult:
         """ファイル総合検証"""
@@ -194,11 +205,21 @@ class FileValidationService:
         return sha256_hash.hexdigest()
     
     def _detect_file_type(self, file_path: Path) -> Tuple[str, str]:
-        """ファイルタイプとMIMEタイプ検出"""
+        """ファイルタイプとMIMEタイプ検出（正規化済み）"""
         try:
             mime_type = self.magic_mime.from_file(str(file_path))
             file_type = self.magic_type.from_file(str(file_path))
-            return mime_type, file_type
+            
+            # MIMEタイプを正規化してデータベース制約に合わせる
+            normalized_mime_type = self._normalize_mime_type(mime_type)
+            
+            logger.debug(
+                "MIME type detected and normalized",
+                original_mime_type=mime_type,
+                normalized_mime_type=normalized_mime_type
+            )
+            
+            return normalized_mime_type, file_type
         except Exception as e:
             logger.warning("Failed to detect file type", error=str(e))
             return "application/octet-stream", "unknown"

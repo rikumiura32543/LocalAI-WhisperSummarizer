@@ -36,7 +36,7 @@ class AudioProcessor:
         logger.info("Audio processor initialized")
     
     async def process_audio_file(self, job_id: str) -> Dict[str, Any]:
-        """音声ファイル完全処理パイプライン"""
+        """音声ファイル完全処理パイプライン（文脈補正機能付き）"""
         
         logger.info("Starting audio processing pipeline", job_id=job_id)
         
@@ -75,22 +75,41 @@ class AudioProcessor:
             
             # 1. 音声転写処理
             transcription_result = await self._transcribe_audio(job_id, audio_path)
+            original_transcription_text = transcription_result["text"]
             
-            # 2. 転写結果保存
+            # 2. AI文脈補正（新機能）
+            self.transcription_service.update_job_status(
+                job_id=job_id,
+                status="transcribing",
+                progress=50,
+                message="AI文脈補正を実行中..."
+            )
+            
+            corrected_result = await self._correct_transcription(job_id, transcription_result)
+            
+            # 3. 書き起こし結果は元のテキストを保存、補正結果は別フィールドで保存
+            transcription_result["text"] = original_transcription_text  # 元の書き起こしテキストを保持
+            transcription_result["corrected_text"] = corrected_result["corrected_text"]  # 補正後テキストを追加
+            transcription_result["corrections_made"] = corrected_result.get("corrections_made", False)
+            
+            # 4. 転写結果保存（元のテキストを保存）
             await self._save_transcription_result(job_id, transcription_result)
             
             # ステータス更新: 転写完了
             self.transcription_service.update_job_status(
                 job_id=job_id,
                 status="summarizing",
-                progress=60,
+                progress=70,
                 message="AI要約を生成しています..."
             )
             
-            # 3. AI要約生成
-            summary_result = await self._generate_summary(job_id, transcription_result)
+            # 5. AI要約生成（補正後のテキストを使用）
+            # 要約用に補正後テキストを使用
+            corrected_transcription_for_summary = transcription_result.copy()
+            corrected_transcription_for_summary["text"] = corrected_result["corrected_text"]
+            summary_result = await self._generate_summary(job_id, corrected_transcription_for_summary)
             
-            # 4. 要約結果保存
+            # 6. 要約結果保存
             await self._save_summary_result(job_id, summary_result)
             
             # ステータス更新: 完了
@@ -102,7 +121,8 @@ class AudioProcessor:
             )
             
             logger.info("Audio processing pipeline completed successfully", 
-                       job_id=job_id)
+                       job_id=job_id,
+                       corrections_made=corrected_result.get("corrections_made", False))
             
             return {
                 "job_id": job_id,
@@ -183,6 +203,50 @@ class AudioProcessor:
                         job_id=job_id,
                         error=str(e))
             raise AudioProcessingError(f"予期しない転写エラー: {e}")
+
+    async def _correct_transcription(self, job_id: str, transcription_result: Dict[str, Any]) -> Dict[str, Any]:
+        """AI文脈補正処理"""
+        
+        logger.info("Starting AI transcription correction", 
+                   job_id=job_id,
+                   text_length=len(transcription_result["text"]))
+        
+        try:
+            # テキストが空の場合はスキップ
+            if not transcription_result["text"] or len(transcription_result["text"].strip()) == 0:
+                logger.warning("Empty transcription text, skipping correction", job_id=job_id)
+                return {
+                    "corrected_text": transcription_result["text"],
+                    "original_text": transcription_result["text"],
+                    "corrections_made": False
+                }
+            
+            # Ollamaサービス初期化
+            async with OllamaService() as ollama:
+                # AI文脈補正実行
+                correction_result = await ollama.correct_transcription(
+                    text=transcription_result["text"]
+                )
+                
+                logger.info("AI transcription correction completed",
+                           job_id=job_id,
+                           original_length=len(transcription_result["text"]),
+                           corrected_length=len(correction_result["corrected_text"]),
+                           corrections_made=correction_result.get("corrections_made", False))
+                
+                return correction_result
+                
+        except Exception as e:
+            logger.error("AI transcription correction failed, using original text",
+                        job_id=job_id,
+                        error=str(e))
+            # エラー時は元のテキストを返す
+            return {
+                "corrected_text": transcription_result["text"],
+                "original_text": transcription_result["text"],
+                "corrections_made": False,
+                "error": str(e)
+            }
     
     async def _save_transcription_result(self, job_id: str, result: Dict[str, Any]) -> None:
         """転写結果保存"""
@@ -273,16 +337,46 @@ class AudioProcessor:
             job = self.transcription_service.get_job(job_id)
             usage_type = job.usage_type_code
             
-            # 要約保存
-            self.summary_service.create_summary(
+            # AI要約基底レコード作成
+            ai_summary = self.summary_service.create_ai_summary(
                 job_id=job_id,
                 summary_type=usage_type,
-                text=result["text"],
-                formatted_text=result["formatted_text"],
-                confidence=result["confidence"],
                 model_used=result["model_used"],
-                details=result.get("details", {})
+                confidence=result["confidence"],
+                processing_time_seconds=result.get("processing_time", 0.0),
+                raw_response=result,
+                formatted_text=result["formatted_text"]
             )
+            
+            # 詳細情報の保存（用途別）
+            details = result.get("details", {})
+            
+            if usage_type == "meeting" and details:
+                # 会議要約詳細作成
+                self.summary_service.create_meeting_summary(
+                    job_id=job_id,
+                    decisions=details.get("decisions", []),
+                    action_plans=details.get("action_plans", []),
+                    summary=details.get("summary", result["text"]),
+                    next_meeting=details.get("next_meeting"),
+                    participants_count=details.get("participants_count"),
+                    meeting_duration_minutes=details.get("meeting_duration_minutes"),
+                    topics_discussed=details.get("topics_discussed", [])
+                )
+            elif usage_type == "interview" and details:
+                # 面接要約詳細作成
+                self.summary_service.create_interview_summary(
+                    job_id=job_id,
+                    evaluation=details.get("evaluation", {}),
+                    experience=details.get("experience", ""),
+                    career_axis=details.get("career_axis", ""),
+                    work_experience=details.get("work_experience", ""),
+                    character_analysis=details.get("character_analysis", ""),
+                    next_steps=details.get("next_steps", ""),
+                    interview_duration_minutes=details.get("interview_duration_minutes"),
+                    position_applied=details.get("position_applied"),
+                    interviewer_notes=details.get("interviewer_notes", {})
+                )
             
             logger.info("Summary result saved successfully", job_id=job_id)
             

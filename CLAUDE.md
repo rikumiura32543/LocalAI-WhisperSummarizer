@@ -136,18 +136,89 @@ python scripts/init_db.py
 
 ## 🔄 最新の修正内容
 
-### v2025.09.03 更新内容
-1. **Ollama設定修正**: モデルを`llama2:7b`→`qwen2:7b`に変更
-2. **UI改善**: 処理中画面のステップアイコンを円の中央に配置
-3. **SQLAlchemy対応**: text()を使用してSQLクエリを明示的に宣言
-4. **エラー解消**: 全ての404エラーとSQLエラーを修正
+### v2025.10.20 AI処理パイプライン最適化
+1. **AI文脈補正機能追加**: 書き起こし→AI文脈補正→AI要約の3段階処理
+2. **処理フロー改善**:
+   - 音声書き起こしエリア: Whisperの初回書き起こし内容を表示
+   - AI要約エリア: 文脈補正後のテキストから生成した要約を表示
+3. **AIモデル最適化**:
+   - Ollama: `schroneko/gemma-2-2b-jpn-it:latest` (日本語特化)
+   - Whisper: `large-v3-turbo` (高精度・高速)
+4. **MIMEタイプ正規化**: `audio/x-wav`等のバリエーションを標準形式に自動変換
+5. **要約表示改善**: JSON形式を廃止し、箇条書き（•）と見出し（■）で整形
 
 ### 現在の動作状況
 - ✅ FastAPIサーバー正常動作（localhost:8100）
-- ✅ Ollamaサービス正常動作（qwen2:7bモデル）
+- ✅ Ollamaサービス正常動作（gemma-2-2b-jpn-itモデル）
+- ✅ Whisper大規模モデル正常動作（large-v3-turbo）
+- ✅ AI文脈補正機能完全動作
 - ✅ 進捗表示機能完全動作（0%→100%）
 - ✅ データベース接続正常（SQLite）
-- ✅ UI/UXの視覚的改善完了
+- ✅ MIMEタイプ正規化機能追加
+
+## 🔬 AI処理パイプライン詳細
+
+### 3段階処理フロー
+
+```
+1. 音声書き起こし (Whisper)
+   ├─ 進捗: 10% → 50%
+   ├─ モデル: large-v3-turbo
+   └─ 出力: 元の書き起こしテキスト（transcription_result["text"]）
+
+2. AI文脈補正 (Ollama)
+   ├─ 進捗: 50% → 70%
+   ├─ モデル: gemma-2-2b-jpn-it
+   ├─ 処理内容:
+   │  ├─ 誤字脱字の修正
+   │  ├─ 文脈から明らかに間違っている単語の修正
+   │  ├─ 句読点の適切な追加
+   │  ├─ 改行の適切な追加
+   │  └─ 専門用語・固有名詞の推測修正
+   └─ 出力: 補正後テキスト（transcription_result["corrected_text"]）
+
+3. AI要約生成 (Ollama)
+   ├─ 進捗: 70% → 100%
+   ├─ モデル: gemma-2-2b-jpn-it
+   ├─ 入力: 補正後テキスト
+   └─ 出力: 構造化要約
+      ├─ 概要（summary）
+      ├─ 決定事項（decisions）
+      ├─ アクションプラン（action_plans）
+      └─ 次回会議（next_meeting）
+```
+
+### 表示仕様
+
+**音声書き起こしエリア**
+- 表示内容: Whisperの初回書き起こし結果（未補正）
+- データソース: `transcription_result["text"]`
+- フォーマット: プレーンテキスト（`<pre>`タグ）
+
+**AI要約エリア**
+- 表示内容: 文脈補正後のテキストから生成した要約
+- データソース: `summary_result["formatted_text"]`
+- フォーマット:
+  - `■` で始まる行 → `<h3>`見出し
+  - `•` で始まる行 → `<li>`箇条書き
+  - 通常の行 → `<p>`段落
+
+### ファイル検証・正規化
+
+**MIMEタイプ正規化**
+```python
+# 検出されたMIMEタイプ → 標準形式
+'audio/x-m4a'  → 'audio/m4a'
+'audio/wave'   → 'audio/wav'
+'audio/x-wav'  → 'audio/wav'
+'audio/mpeg'   → 'audio/mp3'
+```
+
+**サポート形式**
+- M4A (audio/m4a, audio/x-m4a)
+- MP4 (audio/mp4)
+- WAV (audio/wav, audio/x-wav, audio/wave)
+- MP3 (audio/mp3, audio/mpeg)
 
 ## 🎨 デザインシステム
 
@@ -167,3 +238,50 @@ python scripts/init_db.py
 - **絵文字禁止**: テキストのみ使用
 - **レスポンシブ**: モバイルファーストデザイン
 - **アクセシビリティ**: コントラスト比4.5:1以上
+
+## 📝 開発ガイドライン
+
+### コーディング規約
+
+**Pythonコード**
+- PEP 8準拠
+- 型ヒント必須（mypy検証）
+- docstring必須（Google Style）
+- ログ出力はstructlogを使用
+
+**JavaScriptコード**
+- Vanilla JS（フレームワーク不使用）
+- ES6+構文
+- async/awaitパターン
+- コメント必須（JSDoc形式）
+
+### データベース設計
+
+**制約ルール**
+- CHECK制約でデータ整合性を保証
+- FOREIGN KEY制約で参照整合性を保証
+- NOT NULL制約で必須項目を明示
+- DEFAULT値で初期値を設定
+
+**MIMEタイプ制約**
+```sql
+CONSTRAINT check_mime_type CHECK (mime_type IN (
+    'audio/mp4',
+    'audio/m4a',
+    'audio/wav',
+    'audio/mp3'
+))
+```
+注: バリエーション（audio/x-wav等）は正規化処理で標準形式に変換
+
+### エラーハンドリング
+
+**フロントエンド**
+- try-catchで全API呼び出しを囲む
+- エラーメッセージはユーザーフレンドリーに
+- コンソールに詳細ログを出力
+
+**バックエンド**
+- カスタム例外クラスを使用
+- structlogで構造化ログ出力
+- HTTPステータスコードを適切に設定
