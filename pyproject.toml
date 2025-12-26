@@ -1,5 +1,5 @@
 [project]
-name = "m4a-transcribe"
+name = "localai-whispersummarizer"
 version = "1.0.0"
 description = "M4A音声ファイルからテキスト転写とAI要約を生成するシステム"
 readme = "README.md"

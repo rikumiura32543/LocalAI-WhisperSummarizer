@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     """アプリケーション設定クラス"""
     
     # 基本設定
-    APP_NAME: str = "M4A転写システム"
+    APP_NAME: str = "LocalAI-WhisperSummarizer"
     APP_VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
     
