@@ -316,6 +316,8 @@ secrets.yml
 # Local development tools
 .nvmrc
 .python-version
+test_server.py
+fix_test_models.py
 
 # IDE specific
 .vscode/
