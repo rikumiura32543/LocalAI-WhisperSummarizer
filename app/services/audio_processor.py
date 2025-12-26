@@ -254,7 +254,7 @@ class AudioProcessor:
         logger.info("Saving transcription result", job_id=job_id)
         
         try:
-            # 転写結果保存
+            # 転写結果保存（セグメントも一括で保存）
             self.transcription_service.save_transcription_result(
                 job_id=job_id,
                 text=result["text"],
@@ -262,23 +262,11 @@ class AudioProcessor:
                 language=result["language"],
                 duration_seconds=result["duration_seconds"],
                 model_used=result["model_used"],
-                processing_time_seconds=result["processing_time_seconds"]
+                processing_time_seconds=result["processing_time_seconds"],
+                segments=result.get("segments", [])
             )
             
-            # セグメント保存
             segments = result.get("segments", [])
-            if segments:
-                for segment in segments:
-                    self.transcription_service.save_transcription_segment(
-                        job_id=job_id,
-                        segment_index=segment["segment_index"],
-                        start_time=segment["start_time"],
-                        end_time=segment["end_time"],
-                        text=segment["text"],
-                        confidence=segment["confidence"],
-                        speaker_id=segment["speaker_id"],
-                        speaker_name=segment["speaker_name"]
-                    )
             
             logger.info("Transcription result saved successfully",
                        job_id=job_id,
@@ -352,16 +340,31 @@ class AudioProcessor:
             details = result.get("details", {})
             
             if usage_type == "meeting" and details:
+                # ToDoとNext Actionsを統合してアクションプランにする
+                action_plans = details.get("action_plans", [])
+                if details.get("todo"):
+                    # "ToDo: " プレフィックスをつけて追加
+                    for item in details["todo"]:
+                        action_plans.append(f"ToDo: {item}")
+                if details.get("next_actions"):
+                    # "Next Action: " プレフィックスをつけて追加（区別する場合）
+                    for item in details["next_actions"]:
+                         action_plans.append(f"Next Action: {item}")
+                
+                # 重複排除
+                unique_action_plans = []
+                [unique_action_plans.append(x) for x in action_plans if x not in unique_action_plans]
+
                 # 会議要約詳細作成
                 self.summary_service.create_meeting_summary(
                     job_id=job_id,
                     decisions=details.get("decisions", []),
-                    action_plans=details.get("action_plans", []),
+                    action_plans=unique_action_plans,
                     summary=details.get("summary", result["text"]),
                     next_meeting=details.get("next_meeting"),
                     participants_count=details.get("participants_count"),
                     meeting_duration_minutes=details.get("meeting_duration_minutes"),
-                    topics_discussed=details.get("topics_discussed", [])
+                    topics_discussed=details.get("agenda", []) or details.get("topics_discussed", [])
                 )
             elif usage_type == "interview" and details:
                 # 面接要約詳細作成

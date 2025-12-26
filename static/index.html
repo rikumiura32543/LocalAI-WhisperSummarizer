@@ -1,22 +1,25 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="音声ファイルからテキストの書き起こしとAIでの要約を作成するWebアプリケーション">
     <title>音声書き起こしシステム</title>
-    
+
     <!-- フォント -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+
     <!-- スタイルシート -->
     <link rel="stylesheet" href="/static/css/style.css">
-    
+
     <!-- アイコンフォント -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
+
 <body>
     <!-- メインヘッダー -->
     <header class="header" role="banner">
@@ -32,7 +35,7 @@
     <!-- メインコンテンツ -->
     <main class="main" role="main">
         <div class="container">
-            
+
             <!-- アップロードセクション -->
             <section class="upload-section" id="uploadSection">
                 <div class="card">
@@ -45,11 +48,11 @@
                             M4A、MP4、WAV、MP3ファイルをアップロードして、テキストの書き起こしとAI要約を作成します
                         </p>
                     </div>
-                    
+
                     <div class="card__body">
                         <!-- ファイルドロップエリア -->
-                        <div class="file-drop-area" id="fileDropArea" role="button" tabindex="0" 
-                             aria-label="音声ファイルをドラッグ&ドロップまたはクリックして選択">
+                        <div class="file-drop-area" id="fileDropArea" role="button" tabindex="0"
+                            aria-label="音声ファイルをドラッグ&ドロップまたはクリックして選択">
                             <div class="file-drop-area__content">
                                 <i class="fas fa-file-audio file-drop-area__icon" aria-hidden="true"></i>
                                 <p class="file-drop-area__text">
@@ -60,16 +63,16 @@
                                     対応形式: M4A, MP4, WAV, MP3 (最大50MB)
                                 </p>
                             </div>
-                            <input type="file" id="fileInput" class="file-input" accept=".m4a,.mp4,.wav,.mp3" 
-                                   aria-describedby="fileInputDescription">
+                            <input type="file" id="fileInput" class="file-input" accept=".m4a,.mp4,.wav,.mp3"
+                                aria-describedby="fileInputDescription">
                             <div id="fileInputDescription" class="sr-only">
                                 音声ファイルを選択してください。対応形式: M4A, MP4, WAV, MP3。最大ファイルサイズ: 50MB
                             </div>
                         </div>
-                        
+
                         <!-- 選択されたファイル情報 -->
-                        <div class="file-info" id="fileInfo" style="display: none;" role="region" 
-                             aria-label="選択されたファイル情報">
+                        <div class="file-info" id="fileInfo" style="display: none;" role="region"
+                            aria-label="選択されたファイル情報">
                             <div class="file-info__content">
                                 <i class="fas fa-file-audio" aria-hidden="true"></i>
                                 <div class="file-info__details">
@@ -77,43 +80,30 @@
                                     <p class="file-info__size" id="fileSize"></p>
                                 </div>
                                 <button type="button" class="btn btn-ghost btn-sm" id="removeFileBtn"
-                                        aria-label="選択されたファイルを削除">
+                                    aria-label="選択されたファイルを削除">
                                     <i class="fas fa-times" aria-hidden="true"></i>
                                 </button>
                             </div>
                         </div>
-                        
-                        <!-- 使用用途選択 -->
-                        <div class="form-group">
-                            <label for="usageType" class="form-label">使用用途</label>
-                            <select id="usageType" class="form-select" required aria-describedby="usageTypeDescription">
-                                <option value="">用途を選択してください</option>
-                                <option value="meeting">会議</option>
-                                <option value="interview">面接</option>
-                            </select>
-                            <div id="usageTypeDescription" class="form-help">
-                                用途に応じて最適なAI要約を生成します
-                            </div>
-                        </div>
-                        
+
                         <!-- 処理開始ボタン -->
                         <div class="form-actions">
                             <button type="button" class="btn btn-primary btn-lg" id="processBtn" disabled
-                                    aria-describedby="processBtnDescription">
+                                aria-describedby="processBtnDescription">
                                 <i class="fas fa-play" aria-hidden="true"></i>
                                 書き起こし・要約を開始
                             </button>
                             <div id="processBtnDescription" class="form-help">
-                                ファイルと用途を選択すると処理を開始できます
+                                音声ファイルを選択すると処理を開始できます
                             </div>
                         </div>
                     </div>
                 </div>
             </section>
-            
+
             <!-- 処理状況セクション -->
-            <section class="processing-section" id="processingSection" style="display: none;" 
-                     role="region" aria-label="処理状況">
+            <section class="processing-section" id="processingSection" style="display: none;" role="region"
+                aria-label="処理状況">
                 <div class="card">
                     <div class="card__header">
                         <h2 class="card__title">
@@ -121,17 +111,17 @@
                             処理中
                         </h2>
                     </div>
-                    
+
                     <div class="card__body">
                         <!-- 進捗バー -->
                         <div class="progress-container">
-                            <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" 
-                                 aria-valuenow="0" aria-label="処理進捗">
+                            <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+                                aria-valuenow="0" aria-label="処理進捗">
                                 <div class="progress-bar__fill" id="progressBarFill"></div>
                                 <div class="progress-bar__text" id="progressText">0%</div>
                             </div>
                         </div>
-                        
+
                         <!-- ステータスメッセージ -->
                         <div class="status-message" id="statusMessage">
                             <p id="currentStatus">処理を開始しています...</p>
@@ -153,7 +143,7 @@
                                 </div>
                             </div>
                         </div>
-                        
+
                         <!-- キャンセルボタン -->
                         <div class="form-actions">
                             <button type="button" class="btn btn-secondary" id="cancelBtn">
@@ -166,8 +156,7 @@
             </section>
 
             <!-- 結果セクション -->
-            <section class="results-section" id="resultsSection" style="display: none;" 
-                     role="region" aria-label="処理結果">
+            <section class="results-section" id="resultsSection" style="display: none;" role="region" aria-label="処理結果">
                 <div class="card">
                     <div class="card__header">
                         <h2 class="card__title">
@@ -175,50 +164,42 @@
                             処理完了
                         </h2>
                     </div>
-                    
+
                     <div class="card__body">
                         <!-- タブナビゲーション -->
                         <div class="tab-nav" role="tablist" aria-label="結果表示タブ">
-                            <button type="button" class="tab-nav__item tab-nav__item--active" id="transcriptionTab" 
-                                    role="tab" aria-controls="transcriptionPanel" aria-selected="true">
+                            <button type="button" class="tab-nav__item tab-nav__item--active" id="transcriptionTab"
+                                role="tab" aria-controls="transcriptionPanel" aria-selected="true">
                                 <i class="fas fa-file-text" aria-hidden="true"></i>
                                 書き起こし結果
                             </button>
-                            <button type="button" class="tab-nav__item" id="summaryTab" 
-                                    role="tab" aria-controls="summaryPanel" aria-selected="false">
+                            <button type="button" class="tab-nav__item" id="summaryTab" role="tab"
+                                aria-controls="summaryPanel" aria-selected="false">
                                 <i class="fas fa-brain" aria-hidden="true"></i>
                                 AI要約
                             </button>
                         </div>
-                        
+
                         <!-- 転写結果パネル -->
-                        <div class="tab-panel tab-panel--active" id="transcriptionPanel" 
-                             role="tabpanel" aria-labelledby="transcriptionTab">
+                        <div class="tab-panel tab-panel--active" id="transcriptionPanel" role="tabpanel"
+                            aria-labelledby="transcriptionTab">
                             <div class="result-content">
                                 <div class="result-meta">
-                                    <p><i class="fas fa-clock" aria-hidden="true"></i> 
-                                       処理時間: <span id="processingTime">-</span></p>
-                                    <p><i class="fas fa-volume-up" aria-hidden="true"></i> 
-                                       音声長: <span id="audioDuration">-</span></p>
-                                    <p><i class="fas fa-language" aria-hidden="true"></i> 
-                                       言語: <span id="detectedLanguage">-</span></p>
-                                    <p><i class="fas fa-percentage" aria-hidden="true"></i> 
-                                       信頼度: <span id="confidence">-</span></p>
+                                    <p><i class="fas fa-clock" aria-hidden="true"></i>
+                                        処理時間: <span id="processingTime">-</span></p>
+                                    <p><i class="fas fa-volume-up" aria-hidden="true"></i>
+                                        音声長: <span id="audioDuration">-</span></p>
+                                    <p><i class="fas fa-language" aria-hidden="true"></i>
+                                        言語: <span id="detectedLanguage">-</span></p>
+                                    <p><i class="fas fa-percentage" aria-hidden="true"></i>
+                                        信頼度: <span id="confidence">-</span></p>
                                 </div>
-                                
+
                                 <div class="result-text" id="transcriptionText">
                                     <!-- 書き起こし結果がここに表示されます -->
                                 </div>
-                                
+
                                 <div class="result-actions">
-                                    <button type="button" class="btn btn-outline" id="downloadTranscriptionTxt">
-                                        <i class="fas fa-download" aria-hidden="true"></i>
-                                        テキストファイル
-                                    </button>
-                                    <button type="button" class="btn btn-outline" id="downloadTranscriptionJson">
-                                        <i class="fas fa-code" aria-hidden="true"></i>
-                                        JSONファイル
-                                    </button>
                                     <button type="button" class="btn btn-outline" id="copyTranscriptionText">
                                         <i class="fas fa-copy" aria-hidden="true"></i>
                                         クリップボードにコピー
@@ -226,33 +207,24 @@
                                 </div>
                             </div>
                         </div>
-                        
+
                         <!-- AI要約パネル -->
-                        <div class="tab-panel" id="summaryPanel" 
-                             role="tabpanel" aria-labelledby="summaryTab" hidden>
+                        <div class="tab-panel" id="summaryPanel" role="tabpanel" aria-labelledby="summaryTab" hidden>
                             <div class="result-content">
                                 <div class="result-meta">
-                                    <p><i class="fas fa-tag" aria-hidden="true"></i> 
-                                       要約タイプ: <span id="summaryType">-</span></p>
-                                    <p><i class="fas fa-robot" aria-hidden="true"></i> 
-                                       AIモデル: <span id="aiModel">-</span></p>
-                                    <p><i class="fas fa-percentage" aria-hidden="true"></i> 
-                                       要約信頼度: <span id="summaryConfidence">-</span></p>
+                                    <p><i class="fas fa-tag" aria-hidden="true"></i>
+                                        要約タイプ: <span id="summaryType">-</span></p>
+                                    <p><i class="fas fa-robot" aria-hidden="true"></i>
+                                        AIモデル: <span id="aiModel">-</span></p>
+                                    <p><i class="fas fa-percentage" aria-hidden="true"></i>
+                                        要約信頼度: <span id="summaryConfidence">-</span></p>
                                 </div>
-                                
+
                                 <div class="result-text" id="summaryText">
                                     <!-- AI要約がここに表示されます -->
                                 </div>
-                                
+
                                 <div class="result-actions">
-                                    <button type="button" class="btn btn-outline" id="downloadSummaryTxt">
-                                        <i class="fas fa-download" aria-hidden="true"></i>
-                                        テキストファイル
-                                    </button>
-                                    <button type="button" class="btn btn-outline" id="downloadSummaryJson">
-                                        <i class="fas fa-code" aria-hidden="true"></i>
-                                        JSONファイル
-                                    </button>
                                     <button type="button" class="btn btn-outline" id="copySummaryText">
                                         <i class="fas fa-copy" aria-hidden="true"></i>
                                         クリップボードにコピー
@@ -260,25 +232,20 @@
                                 </div>
                             </div>
                         </div>
-                        
+
                         <!-- 新しい処理ボタン -->
                         <div class="form-actions mt-4">
                             <button type="button" class="btn btn-primary" id="newProcessBtn">
                                 <i class="fas fa-plus" aria-hidden="true"></i>
                                 新しいファイルを処理
                             </button>
-                            <button type="button" class="btn btn-outline" id="downloadAllBtn">
-                                <i class="fas fa-archive" aria-hidden="true"></i>
-                                全データをダウンロード
-                            </button>
                         </div>
                     </div>
                 </div>
             </section>
-            
+
             <!-- エラーセクション -->
-            <section class="error-section" id="errorSection" style="display: none;" 
-                     role="alert" aria-label="エラー情報">
+            <section class="error-section" id="errorSection" style="display: none;" role="alert" aria-label="エラー情報">
                 <div class="card card--error">
                     <div class="card__header">
                         <h2 class="card__title">
@@ -286,12 +253,12 @@
                             処理エラー
                         </h2>
                     </div>
-                    
+
                     <div class="card__body">
                         <div class="error-message" id="errorMessage">
                             <!-- エラーメッセージがここに表示されます -->
                         </div>
-                        
+
                         <div class="error-actions">
                             <button type="button" class="btn btn-primary" id="retryBtn">
                                 <i class="fas fa-redo" aria-hidden="true"></i>
@@ -312,18 +279,18 @@
     <footer class="footer" role="contentinfo">
         <div class="container">
             <p class="footer__text">
-                &copy; 2024 音声書き起こしシステム. 
-                <a href="/api/docs" class="footer__link">API Documentation</a> | 
+                &copy; 2024 音声書き起こしシステム.
+                <a href="/api/docs" class="footer__link">API Documentation</a> |
                 <a href="/health" class="footer__link">System Status</a>
             </p>
         </div>
     </footer>
-    
+
     <!-- 通知トースト -->
     <div class="toast-container" id="toastContainer" aria-live="polite" aria-atomic="true">
         <!-- トーストメッセージがここに動的に追加されます -->
     </div>
-    
+
     <!-- ローディングオーバーレイ -->
     <div class="loading-overlay" id="loadingOverlay" style="display: none;" aria-hidden="true">
         <div class="loading-spinner">
@@ -331,8 +298,9 @@
             <p>処理中...</p>
         </div>
     </div>
-    
+
     <!-- JavaScript -->
     <script src="/static/js/app.js"></script>
 </body>
+
 </html>

@@ -185,73 +185,20 @@ async def download_summary_txt(
     
     # ファイル名生成
     safe_filename = job.original_filename.replace(" ", "_").replace("/", "_")
-    filename = f"summary_{safe_filename.split('.')[0]}.txt"
+    filename = f"summary_{safe_filename.split('.')[0]}.md"
     
     # テキストコンテンツ生成
-    content_lines = [
-        f"{job.usage_type_code.upper()}要約結果",
-        f"ファイル名: {job.original_filename}",
-        f"処理日時: {summary['created_at'].split('T')[0]}",
-        f"使用モデル: {summary['model_used']}",
-        f"信頼度: {summary['confidence']:.2f}",
-        "",
-        "--- 要約内容 ---",
-        summary["formatted_text"],
-        ""
-    ]
-    
-    # タイプ別詳細追加
-    if summary["type"] == "meeting" and summary["details"]:
-        details = summary["details"]
-        content_lines.extend([
-            "--- 会議詳細 ---",
-            f"概要: {details.get('summary', '')}",
-            "",
-            "決定事項:",
-        ])
-        for decision in details.get('decisions', []):
-            content_lines.append(f"• {decision}")
-        
-        content_lines.extend([
-            "",
-            "アクションプラン:",
-        ])
-        for action in details.get('action_plans', []):
-            content_lines.append(f"• {action}")
-        
-        if details.get('next_meeting'):
-            content_lines.extend([
-                "",
-                f"次回会議: {details['next_meeting']}"
-            ])
-    
-    elif summary["type"] == "interview" and summary["details"]:
-        details = summary["details"]
-        content_lines.extend([
-            "--- 面接詳細 ---",
-            f"応募職種: {details.get('position_applied', '未指定')}",
-            "",
-            f"経験・スキル:\n{details.get('experience', '')}",
-            "",
-            f"キャリアの軸:\n{details.get('career_axis', '')}",
-            "",
-            f"職務経験:\n{details.get('work_experience', '')}",
-            "",
-            f"人物分析:\n{details.get('character_analysis', '')}",
-            "",
-            f"次のステップ:\n{details.get('next_steps', '')}"
-        ])
-    
-    content = "\n".join(content_lines)
+    # 既にOllamaServiceでMarkdown形式に整形されたテキストを使用
+    content = summary["formatted_text"]
     
     # ダウンロードログ記録
-    logger.info("Summary text downloaded", 
+    logger.info("Summary markdown downloaded", 
                job_id=job_id,
                filename=filename)
     
     return Response(
         content=content,
-        media_type="text/plain; charset=utf-8",
+        media_type="text/markdown; charset=utf-8",
         headers={
             "Content-Disposition": f"attachment; filename*=UTF-8''{filename}"
         }

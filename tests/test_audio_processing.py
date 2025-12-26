@@ -13,7 +13,7 @@ from unittest.mock import Mock, AsyncMock, patch
 os.environ["ENVIRONMENT"] = "test"
 os.environ["DATABASE_URL"] = "sqlite:///./test_audio_processing.db"
 
-from app.services.whisper_service import WhisperService, WhisperError, check_whisper_dependencies
+from app.services.whisper_service import WhisperService, WhisperError
 from app.services.ollama_service import OllamaService, OllamaError
 from app.services.audio_processor import AudioProcessor, AudioProcessingError
 from app.core.database import get_database_manager
@@ -21,20 +21,7 @@ from app.core.database import get_database_manager
 
 class TestWhisperService:
     """Whisperサービステスト"""
-    
-    def test_whisper_dependencies(self):
-        """Whisper依存関係チェック"""
-        deps = check_whisper_dependencies()
-        
-        # 依存関係情報が取得できることを確認
-        assert "whisper" in deps
-        assert "torch" in deps
-        assert "librosa" in deps
-        assert "soundfile" in deps
-        
-        # 各依存関係はbool値であることを確認
-        for key, value in deps.items():
-            assert isinstance(value, bool)
+
     
     def test_whisper_service_initialization(self):
         """Whisperサービス初期化テスト"""

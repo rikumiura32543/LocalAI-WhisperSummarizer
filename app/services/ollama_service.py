@@ -273,6 +273,7 @@ class OllamaService:
                 "error": str(e)
             }
     
+    
     def _build_summary_prompt(self, text: str, summary_type: str) -> str:
         """要約プロンプト構築"""
         
@@ -288,13 +289,15 @@ class OllamaService:
     "summary": "会議の概要（3-5行）",
     "details": {{
         "summary": "詳細な会議内容",
+        "agenda": ["議題・議論内容1", "議題・議論内容2"],
         "decisions": ["決定事項1", "決定事項2"],
-        "action_plans": ["アクション1（担当者）", "アクション2（担当者）"],
+        "todo": ["ToDo1（担当者）", "ToDo2（担当者）"],
+        "next_actions": ["次のアクション1", "次のアクション2"],
         "next_meeting": "次回会議予定（あれば）"
     }}
 }}
 
-日本語で回答してください。
+必ず日本語で回答してください。
 """
         
         elif summary_type == "interview":
@@ -334,8 +337,21 @@ class OllamaService:
         """要約レスポンス解析"""
         try:
             # JSON形式の場合は解析
-            if response.strip().startswith("{"):
-                return json.loads(response.strip())
+            # マークダウンのコードブロックが含まれる場合の対応
+            cleaned_response = response.strip()
+            if "```json" in cleaned_response:
+                import re
+                match = re.search(r'```json\s*(.*?)\s*```', cleaned_response, re.DOTALL)
+                if match:
+                    cleaned_response = match.group(1)
+            elif "```" in cleaned_response:
+                import re
+                match = re.search(r'```\s*(.*?)\s*```', cleaned_response, re.DOTALL)
+                if match:
+                    cleaned_response = match.group(1)
+            
+            if cleaned_response.startswith("{"):
+                return json.loads(cleaned_response)
             
             # プレーンテキストの場合は構造化
             return {
@@ -351,42 +367,56 @@ class OllamaService:
             }
     
     def _format_summary(self, data: Dict[str, Any], summary_type: str) -> str:
-        """要約整形"""
+        """要約整形 (Markdown)"""
         formatted_lines = []
         
         # 基本要約
         summary = data.get("summary", "")
         if summary:
-            formatted_lines.append(summary)
+            formatted_lines.append(f"# 要約\n{summary}")
             formatted_lines.append("")
         
         # 詳細情報
         details = data.get("details", {})
         
         if summary_type == "meeting" and details:
+            # 会議要約のフォーマット - 要求仕様: 議題・議論内容, 決定事項, ToDo, 次のアクション
+            
+            if details.get("agenda"):
+                formatted_lines.append("## 議題・議論内容")
+                for item in details["agenda"]:
+                    formatted_lines.append(f"- {item}")
+                formatted_lines.append("")
+
             if details.get("decisions"):
-                formatted_lines.append("■決定事項")
+                formatted_lines.append("## 決定事項")
                 for decision in details["decisions"]:
-                    formatted_lines.append(f"• {decision}")
+                    formatted_lines.append(f"- {decision}")
                 formatted_lines.append("")
             
-            if details.get("action_plans"):
-                formatted_lines.append("■アクションプラン")
-                for action in details["action_plans"]:
-                    formatted_lines.append(f"• {action}")
+            if details.get("todo"):
+                formatted_lines.append("## ToDo")
+                for item in details["todo"]:
+                    formatted_lines.append(f"- [ ] {item}")
+                formatted_lines.append("")
+
+            if details.get("next_actions"):
+                formatted_lines.append("## 次のアクション")
+                for item in details["next_actions"]:
+                    formatted_lines.append(f"- {item}")
                 formatted_lines.append("")
             
             if details.get("next_meeting"):
-                formatted_lines.append(f"■次回会議: {details['next_meeting']}")
+                formatted_lines.append(f"## 次回会議\n{details['next_meeting']}")
         
         elif summary_type == "interview" and details:
             if details.get("experience"):
-                formatted_lines.append("■経験・スキル")
+                formatted_lines.append("## 経験・スキル")
                 formatted_lines.append(details["experience"])
                 formatted_lines.append("")
             
             if details.get("character_analysis"):
-                formatted_lines.append("■人物分析")
+                formatted_lines.append("## 人物分析")
                 formatted_lines.append(details["character_analysis"])
                 formatted_lines.append("")
         
