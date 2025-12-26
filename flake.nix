@@ -82,7 +82,7 @@
           # 環境変数
           OLLAMA_HOST = "127.0.0.1:11434";
           WHISPER_MODEL = "base";
-          DATABASE_URL = "sqlite:///./m4a_transcribe.db";
+          DATABASE_URL = "sqlite:///./LocalAI-WhisperSummarizer.db";
           
           # セキュリティ設定
           PYTHONDONTWRITEBYTECODE = "1";

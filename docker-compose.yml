@@ -7,7 +7,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: development
-    container_name: m4a-transcribe-app
+    container_name: localai-whispersummarizer-app
     ports:
       - "8100:8100"
     volumes:
@@ -17,7 +17,7 @@ services:
       - models:/app/models
     environment:
       - ENV=development
-      - DATABASE_URL=sqlite:///./data/m4a_transcribe.db
+      - DATABASE_URL=sqlite:///./data/LocalAI-WhisperSummarizer.db
       - OLLAMA_BASE_URL=http://ollama:11434
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=DEBUG
@@ -37,7 +37,7 @@ services:
   # Ollama AIサーバー
   ollama:
     image: ollama/ollama:latest
-    container_name: m4a-transcribe-ollama
+    container_name: localai-whispersummarizer-ollama
     ports:
       - "11434:11434"
     volumes:
@@ -62,7 +62,7 @@ services:
   # Redis (キャッシュ・セッション管理)
   redis:
     image: redis:7-alpine
-    container_name: m4a-transcribe-redis
+    container_name: localai-whispersummarizer-redis
     ports:
       - "6379:6379"
     volumes:
@@ -80,7 +80,7 @@ services:
   # Nginx (リバースプロキシ・静的ファイル配信)
   nginx:
     image: nginx:alpine
-    container_name: m4a-transcribe-nginx
+    container_name: localai-whispersummarizer-nginx
     ports:
       - "80:80"
       - "443:443"

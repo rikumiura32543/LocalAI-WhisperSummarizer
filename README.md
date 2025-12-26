@@ -57,7 +57,7 @@ graph TB
 
 ```bash
 # プロジェクトディレクトリへ移動
-cd m4a_transcribe
+cd LocalAI-WhisperSummarizer
 
 # Nix開発環境の有効化
 nix --extra-experimental-features 'nix-command flakes' develop
@@ -65,8 +65,9 @@ nix --extra-experimental-features 'nix-command flakes' develop
 # 依存関係の同期
 uv sync
 
-# データベース初期化
-source .venv/bin/activate && python scripts/init_db.py
+# データベースを再初期化
+rm data/LocalAI-WhisperSummarizer.db*
+python scripts/init_db.py
 
 # Ollama サービスの起動（別のターミナルで実行推奨）
 ollama serve

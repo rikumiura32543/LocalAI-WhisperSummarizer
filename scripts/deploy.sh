@@ -38,7 +38,7 @@ ENVIRONMENT="${ENVIRONMENT:-production}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 PROJECT_ID="${GCP_PROJECT_ID:-}"
 ZONE="${GCE_ZONE:-asia-northeast1-a}"
-INSTANCE_NAME="${GCE_INSTANCE_NAME:-m4a-transcribe-vm}"
+INSTANCE_NAME="${GCE_INSTANCE_NAME:-localai-whispersummarizer-vm}"
 
 # 使用方法表示
 usage() {
@@ -167,7 +167,7 @@ deploy() {
         --project="${PROJECT_ID}" \
         --command="
             set -euo pipefail
-            cd /opt/m4a-transcribe
+            cd /opt/localai-whispersummarizer
             
             # 最新のDocker Composeファイル取得
             curl -fsSL https://raw.githubusercontent.com/your-repo/m4a-transcribe/main/docker-compose.prod.yml \
@@ -180,8 +180,8 @@ deploy() {
             docker-compose -f docker-compose.prod.yml stop app
             
             # データベースバックアップ
-            if [[ -f data/m4a_transcribe.db ]]; then
-                cp data/m4a_transcribe.db data/m4a_transcribe.db.backup-\$(date +%Y%m%d_%H%M%S)
+            if [[ -f data/LocalAI-WhisperSummarizer.db ]]; then
+                cp data/LocalAI-WhisperSummarizer.db data/LocalAI-WhisperSummarizer.db.backup-$(date +%Y%m%d_%H%M%S)
             fi
             
             # 新しいイメージで起動
@@ -299,9 +299,9 @@ create_deployment_backup() {
             cd /opt/m4a-transcribe
             
             # データベースバックアップ
-            if [[ -f data/m4a_transcribe.db ]]; then
-                backup_name=\"deployment-backup-\$(date +%Y%m%d_%H%M%S).db\"
-                cp data/m4a_transcribe.db \"backups/\$backup_name\"
+            if [[ -f data/LocalAI-WhisperSummarizer.db ]]; then
+                local backup_name=\"LocalAI-WhisperSummarizer.db.backup-\$(date +%Y%m%d_%H%M%S)\"
+                cp data/LocalAI-WhisperSummarizer.db \"backups/\$backup_name\"
                 gzip \"backups/\$backup_name\"
                 echo \"バックアップ作成: \$backup_name.gz\"
             fi

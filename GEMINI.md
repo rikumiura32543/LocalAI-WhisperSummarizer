@@ -6,7 +6,7 @@
 
 ```bash
 # プロジェクトディレクトリに移動
-cd m4a_transcribe
+cd LocalAI-WhisperSummarizer
 
 # NIX開発環境に入る（実験的な機能を有効化）
 nix --extra-experimental-features 'nix-command flakes' develop
@@ -113,7 +113,7 @@ uv sync --reinstall
 ### データベースエラー
 ```bash
 # データベースを再初期化
-rm data/m4a_transcribe.db*
+rm data/LocalAI-WhisperSummarizer.db*
 python scripts/init_db.py
 ```
 
