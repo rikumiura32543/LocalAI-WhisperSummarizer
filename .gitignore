@@ -201,8 +201,16 @@ $RECYCLE.BIN/
 *.sqlite
 *.sqlite3
 *.db-journal
+*.db-shm
+*.db-wal
+LocalAI-WhisperSummarizer.db
+LocalAI-WhisperSummarizer.db-journal
+LocalAI-WhisperSummarizer.db-shm
+LocalAI-WhisperSummarizer.db-wal
 m4a_transcribe.db
 m4a_transcribe.db-journal
+m4a_transcribe.db-shm
+m4a_transcribe.db-wal
 
 # Application specific data directories
 data/
